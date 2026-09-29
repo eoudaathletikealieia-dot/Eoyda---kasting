@@ -531,57 +531,47 @@ function kPermutations(arr, k){
   return out;
 }
 
-// One round of the Πανελλήνιο draw. `used[athleteId][sector]` marks sectors an
-// athlete already fished in earlier rounds — those are forbidden, so every
-// athlete changes sector each αγωνιστική.
-// `strict` (default): nobody may repeat a sector. strict === false lets
-// individual-only athletes repeat a sector when the numbers leave no other
-// way (e.g. a team of 4 always leaves Ε one short, and a single «μόνο
-// ατομικά» athlete has to fill it) — they still prefer a new sector.
-function panPlaceRound(teamEntries, extras, target, used, strict){
+// One round of the Πανελλήνιο draw, for any number of sectors. `caps` are
+// the sector sizes (equal, or with a smaller technical sector last — άρθρο
+// 20). `used[athleteId][sector]` marks sectors an athlete fished in earlier
+// rounds; with `strict` nobody repeats a sector, otherwise a repeat is
+// allowed only when there is no other way (it is still avoided if possible).
+// A team is spread over as many different sectors as possible — with fewer
+// sectors than members, at most ceil(members / sectors) in the same one.
+function panPlaceRound(teamEntries, extras, caps, used, strict){
   if (strict === undefined) strict = true;
+  var N = caps.length;
+  var ALL = []; for (var i = 0; i < N; i++) ALL.push(i);
   function isUsed(g, s){ return used[g.athlete.id] && used[g.athlete.id][s]; }
-  for (var attempt = 0; attempt < 400; attempt++){
-    var placed = [[],[],[],[],[]], indCount = [0,0,0,0,0], clubCount = [{},{},{},{},{}], ok = true;
-    // Teams: one member per sector (a team of 4 never goes to Ε), choosing
-    // the assignment that keeps the individual counts most even.
-    shuffle(teamEntries).forEach(function(team){
+  for (var attempt = 0; attempt < 600; attempt++){
+    var placed = ALL.map(function(){ return []; }), fill = ALL.map(function(){ return 0; });
+    var clubCount = ALL.map(function(){ return {}; }), ok = true;
+    function put(g, s){ placed[s].push(g); fill[s]++; clubCount[s][g.club.id] = (clubCount[s][g.club.id] || 0) + 1; }
+    function room(s){ return caps[s] - fill[s]; }
+    shuffle(teamEntries).sort(function(a,b){ return b.length - a.length; }).forEach(function(team){
       if (!ok) return;
-      var sectors = team.length < 5 ? [0,1,2,3] : [0,1,2,3,4];
-      var members = shuffle(team);
-      var best = null, bestScore = Infinity, ties = 0;
-      kPermutations(sectors, members.length).forEach(function(perm){
-        for (var i = 0; i < members.length; i++) if (isUsed(members[i], perm[i])) return;
-        var ic = indCount.slice();
-        for (var j = 0; j < members.length; j++) if (participationOf(members[j].athlete) !== "team") ic[perm[j]]++;
-        var over = ic.some(function(n){ return n > target; }) ? 1000 : 0;
-        var score = over + Math.max.apply(null, ic) - Math.min.apply(null, ic);
-        if (score < bestScore){ best = perm; bestScore = score; ties = 1; }
-        else if (score === bestScore){ ties++; if (Math.random() < 1/ties) best = perm; }
-      });
-      if (!best || bestScore >= 1000){ ok = false; return; }
-      members.forEach(function(g, i){
-        var sIdx = best[i];
-        placed[sIdx].push(g);
-        if (participationOf(g.athlete) !== "team") indCount[sIdx]++;
-        clubCount[sIdx][g.club.id] = (clubCount[sIdx][g.club.id] || 0) + 1;
+      var perMax = Math.ceil(team.length / N);
+      shuffle(team).forEach(function(g){
+        if (!ok) return;
+        var open = shuffle(ALL.filter(function(s){
+          return room(s) > 0 && (clubCount[s][g.club.id] || 0) < perMax && (!strict || !isUsed(g, s));
+        }));
+        if (!open.length){ ok = false; return; }
+        open.sort(function(a,b){ return ((isUsed(g,a)?1:0) - (isUsed(g,b)?1:0)) || (room(b) - room(a)); });
+        put(g, open[0]);
       });
     });
     if (!ok) continue;
-    // Individual-only athletes fill the sectors up to the target.
     shuffle(extras).forEach(function(g){
       if (!ok) return;
-      var open = shuffle([0,1,2,3,4].filter(function(s){ return indCount[s] < target && (!strict || !isUsed(g, s)); }));
+      var open = shuffle(ALL.filter(function(s){ return room(s) > 0 && (!strict || !isUsed(g, s)); }));
       if (!open.length){ ok = false; return; }
       open.sort(function(a,b){
-        return ((isUsed(g,a)?1:0) - (isUsed(g,b)?1:0)) || ((clubCount[a][g.club.id]||0) - (clubCount[b][g.club.id]||0)) || (indCount[a] - indCount[b]);
+        return ((isUsed(g,a)?1:0) - (isUsed(g,b)?1:0)) || ((clubCount[a][g.club.id]||0) - (clubCount[b][g.club.id]||0)) || (room(b) - room(a));
       });
-      var sIdx = open[0];
-      placed[sIdx].push(g);
-      indCount[sIdx]++;
-      clubCount[sIdx][g.club.id] = (clubCount[sIdx][g.club.id] || 0) + 1;
+      put(g, open[0]);
     });
-    if (ok && indCount.every(function(n){ return n === target; })) return placed;
+    if (ok && fill.every(function(n, s){ return n === caps[s]; })) return placed;
   }
   return null;
 }
@@ -591,14 +581,7 @@ function panPlaceRound(teamEntries, extras, target, used, strict){
 // members. Athletes absent that day keep their (empty) seat and get the
 // sector's size plus one — e.g. 7+1 = 8.
 function panRankRound(flat, caps, weights, absent){
-  absent = absent || {};
-  var ind = {};
-  function w(a){ return { athleteId: a.athleteId, weight: parseWeight(weights[a.athleteId]) }; }
-  for (var ps = 0; ps < caps.length; ps++){
-    var group = flat.filter(function(a){ return a.sector === ps; });
-    Object.assign(ind, rankGroupByWeight(group.filter(function(a){ return !absent[a.athleteId]; }).map(w)));
-    group.filter(function(a){ return absent[a.athleteId]; }).forEach(function(a){ ind[a.athleteId] = group.length + 1; });
-  }
+  var ind = regionalRankRound(flat, caps, weights, absent);
   return { ind: ind, team: ind };
 }
 
@@ -934,7 +917,7 @@ function buildRacePrint(){
   h += '<h2>Κλήρωση θέσεων</h2>';
   state.sectorCapacities.forEach(function(cap, sIdx){
     var rows = state.flatAssignments.filter(function(a){ return a.sector === sIdx; }).sort(function(a,b){ return a.position - b.position; });
-    var tech = !isPan && cap !== state.sectorCapacities[0];
+    var tech = cap !== state.sectorCapacities[0];
     h += '<div class="blk"><h3>Τομέας '+sectorLabel(sIdx)+(tech?' · Τεχνητός':'')+'</h3><table><tr><th class="c">Θέση</th><th>Αθλητής</th><th>Σύλλογος</th>' +
       (hasW ? '<th class="c">Ψάρια</th><th class="c">Εκ.</th><th class="c">Βαθμοί</th><th class="c">Β.Π.</th>' : '') + '</tr>';
     rows.forEach(function(a){
@@ -1581,18 +1564,13 @@ function runFriendlyDraw(){
 // competitors (e.g. 35 → 7 per sector) — both rankings run 1..N everywhere,
 // however many athletes physically sit in the sector.
 function runPanhellenicDraw(){
-  var N = 5;
-  state.numSectors = N;
+  var N = state.numSectors;
   var counts = panCounts();
-  if (counts.orphans.length){
-    state.error = "«Μόνο ομαδικά» αλλά εκτός ομάδας (η ομάδα είναι ήδη πλήρης): " + counts.orphans.join(", ") + ". Άλλαξε τη συμμετοχή τους ή το μέγεθος ομάδας.";
+  if (N < 2 || counts.individual < N * 2){
+    state.error = "Χρειάζονται τουλάχιστον 2 τομείς και 2 αθλητές ανά τομέα — τώρα " + counts.individual + " αθλητές σε " + N + " τομείς.";
     render(); return;
   }
-  if (counts.individual % N !== 0){
-    state.error = "Οι αθλητές του ατομικού πρέπει να είναι πολλαπλάσιο του 5 (π.χ. 35 ή 40) — τώρα είναι " + counts.individual + ".";
-    render(); return;
-  }
-  var target = counts.individual / N;
+  var caps = computeCapacities(counts.individual, N);
 
   var teamEntries = [], extras = [];
   activeClubs().forEach(function(c){
@@ -1609,10 +1587,10 @@ function runPanhellenicDraw(){
   var ROUNDS = 3;
   var allPlaced = null;
   for (var tries = 0; tries < 90 && !allPlaced; tries++){
-    var strict = tries < 30;   // first strict; then let individual-only athletes repeat if unavoidable
+    var strict = tries < 30 && N >= 3;   // first strict; then allow a repeat only where unavoidable
     var used = {}, got = [];
     for (var r = 0; r < ROUNDS; r++){
-      var placed = panPlaceRound(teamEntries, extras, target, used, strict);
+      var placed = panPlaceRound(teamEntries, extras, caps, used, strict);
       if (!placed){ got = null; break; }
       placed.forEach(function(members, sIdx){
         members.forEach(function(g){ (used[g.athlete.id] = used[g.athlete.id] || {})[sIdx] = true; });
@@ -1622,7 +1600,7 @@ function runPanhellenicDraw(){
     if (got) allPlaced = got;
   }
   if (!allPlaced){
-    state.error = "Δεν βρέθηκε κλήρωση 3 αγωνιστικών με αλλαγή τομέα για όλους και ισοκατανομή. Δοκίμασε ξανά ή έλεγξε τα μεγέθη ομάδων.";
+    state.error = "Δεν βρέθηκε κλήρωση 3 αγωνιστικών με αλλαγή τομέα για όλους. Δοκίμασε ξανά ή άλλαξε τον αριθμό τομέων.";
     render(); return;
   }
   state.error = "";
@@ -2250,16 +2228,17 @@ function renderSetup(){
 
   html += '<div style="margin-bottom:20px;"><div class="section-title">Ρυθμίσεις πεδίου</div>';
   html += '<label style="display:block; font-size:12.5px; color:#5A6472; margin-bottom:4px;">Αριθμός τομέων</label>';
-  if (isPan){
-    html += '<div style="font-size:14px; color:'+NAVY+'; font-weight:bold;">5 <span style="font-weight:normal; font-size:12px; color:#8A93A0;">— σταθερό στο Πανελλήνιο (μία πεντάδα ανά ομάδα)</span></div>';
-  } else {
   html += '<input id="numSectorsInput" type="text" inputmode="numeric" class="input" style="max-width:100px;" value="'+esc(state.numSectors)+'" onblur="commitNumSectorsAndRender()" />';
-  }
   if (isPan){
     var pc = panCounts();
-    var indOk = pc.individual % 5 === 0;
-    html += '<div style="font-size:12.5px; color:#5A6472; margin-top:8px;">Ομαδικό: <b>'+pc.teams+'</b> ομάδες · Ατομικό: <b style="color:'+(indOk?NAVY:"#A33")+';">'+pc.individual+'</b> αθλητές'+(indOk && pc.individual ? ' ('+(pc.individual/5)+' ανά τομέα)' : '')+'</div>';
-    if (!indOk) html += '<div style="font-size:11.5px; color:#A33; margin-top:2px;">Οι αθλητές πρέπει να είναι πολλαπλάσιο του 5 (35, 40 ή 45), ώστε όλοι οι τομείς να έχουν τον ίδιο αριθμό.</div>';
+    var pcaps = computeCapacities(pc.individual, state.numSectors);
+    var ptech = pcaps.length > 1 && pcaps[pcaps.length-1] !== pcaps[0];
+    html += '<div style="font-size:12.5px; color:#5A6472; margin-top:8px;">Ομαδικό: <b>'+pc.teams+'</b> ομάδες · Ατομικό: <b style="color:'+NAVY+';">'+pc.individual+'</b> αθλητές</div>';
+    if (pc.individual && pcaps.length){
+      html += '<div style="font-size:12.5px; color:#5A6472; margin-top:2px;">Τομείς: <b>' + pcaps.map(function(c, i){ return sectorLabel(i) + ' ' + c; }).join(' · ') + '</b></div>';
+      if (ptech) html += '<div style="font-size:11.5px; color:#B8862F; margin-top:2px;">Ο τομέας '+sectorLabel(pcaps.length-1)+' είναι τεχνητός (άρθρο 20): συγκρίνεται με «δανεικούς» αθλητές του προηγούμενου τομέα.</div>';
+    }
+    html += '<div style="font-size:11.5px; color:#8A93A0; margin-top:4px;">Κάθε αθλητής αλλάζει τομέα σε κάθε αγωνιστική· τα μέλη μιας ομάδας μπαίνουν σε διαφορετικούς τομείς όσο γίνεται.</div>';
   } else if (isFriendly){
     html += '<div style="font-size:11.5px; color:#8A93A0; margin-top:6px;">Φιλική κλήρωση: οι αθλητές μοιράζονται εντελώς τυχαία στους τομείς, χωρίς κανόνες συλλόγων.</div>';
   } else {
@@ -2867,7 +2846,7 @@ function renderDraw(){
   }
   state.sectorCapacities.forEach(function(cap, sIdx){
     var isPanMode = state.mode === "panhellenic";
-    var isTechnical = !isPanMode && state.sectorCapacities.length>0 && cap !== state.sectorCapacities[0];
+    var isTechnical = state.sectorCapacities.length>0 && cap !== state.sectorCapacities[0];
     var start = sectorOffsets[sIdx]+1, end = sectorOffsets[sIdx]+cap;
     html += '<div style="margin-bottom:18px;">';
     html += '<div style="font-family:Georgia,serif; font-size:14px; color:'+NAVY+'; margin-bottom:8px; padding-bottom:4px; border-bottom:2px solid '+GOLD+';">Τομέας '+sectorLabel(sIdx);
