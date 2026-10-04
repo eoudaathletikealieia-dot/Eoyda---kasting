@@ -88,7 +88,7 @@ var ROSTER_KEY = "casting/roster";
 var SAVED_DRAWS_KEY = "casting/saved_draws";
 var MODE_KEY = "casting/mode";
 var APP_NAME = "Κληρώσεις & Διαχείριση Αγώνων Κάστινγκ";
-var APP_VERSION = "v1.11 · 03/10/2026";
+var APP_VERSION = "v1.12 · 04/10/2026";
 var CURRENT_KEY = "casting/current_race";
 var QUOTA_KEY = "casting/quota";
 var PAIRS_KEY = "casting/pairs";
@@ -322,7 +322,6 @@ var state = {
   // Αγώνας ζευγαριών (μόνο Φιλικοί): mode "joint" = one result per pair,
   // "sum" = each athlete scored, pair total = sum. list = [[idA, idB], …].
   pairs: { on: false, mode: "joint", list: [] },
-  seriesSponsors: [],
   // Στοιχεία αγώνα for the PDFs: kept from race to race until changed.
   raceInfo: { chief: "", orgName: "", orgLogo: "", date: "", place: "", sponsors: [] },  // ποσόστωση Πανελληνίου
   weights: {},          // derived from `counts` — never edited directly
@@ -818,19 +817,12 @@ function openSeriesRanking(){
     var p = out[i-1];
     r.place = (p && cmp(key(p), key(r)) === 0) ? p.place : i + 1;
   });
-  state.seriesRaces = races.map(function(d){ return { name: d.name, savedAt: d.savedAt }; });
-  // Χορηγοί όλων των αγώνων της σειράς, ο καθένας μία φορά (ίδιο όνομα =
-  // ένας), με τη σειρά που πρωτοεμφανίζονται.
-  var seenSp = {};
-  state.seriesSponsors = [];
-  races.forEach(function(d){
-    ((d.raceInfo && d.raceInfo.sponsors) || []).forEach(function(x){
-      if (!x || !(x.name || x.logo)) return;
-      var k = x.name ? "n:" + normalizeClubName(x.name) : "l:" + x.logo;
-      if (seenSp[k]) return;
-      seenSp[k] = true;
-      state.seriesSponsors.push({ name: x.name || "", logo: x.logo || "" });
-    });
+  // Χορηγός/οί και Αλυτάρχης: αυτά που αποθηκεύτηκαν με τον κάθε αγώνα,
+  // μόνο στη γραμμή του αγώνα (όχι στην κεφαλίδα/υποσέλιδο).
+  state.seriesRaces = races.map(function(d){
+    var ri = d.raceInfo || {};
+    return { name: d.name, savedAt: d.savedAt, chief: String(ri.chief || "").trim(),
+      sponsors: (ri.sponsors || []).filter(function(x){ return x && (x.name || x.logo); }).map(function(x){ return { name: x.name || "", logo: x.logo || "" }; }) };
   });
   state.seriesRows = out;
   state.stage = "series";
@@ -1092,13 +1084,26 @@ function buildChampionshipPrint(){
   return { html: h + printSignature() + printFooter(), file: "Protathlima_" + title };
 }
 
+// «Χορηγός: [λογότυπο] Όνομα» / «Αλυτάρχης: …» κάτω από τη γραμμή ενός αγώνα
+// της συγκεντρωτικής. Ό,τι λείπει δεν γράφεται.
+function seriesRaceMeta(r, logoPx){
+  var lines = [], sp = r.sponsors || [];
+  if (sp.length) lines.push((sp.length > 1 ? 'Χορηγοί: ' : 'Χορηγός: ') + sp.map(function(x){
+    return '<span style="white-space:nowrap;">' + (x.logo ? '<img src="'+x.logo+'" alt="" style="height:'+logoPx+'px; max-width:'+(logoPx*3)+'px; width:auto; object-fit:contain; vertical-align:middle; margin-right:3px;" />' : '') + esc(x.name) + '</span>';
+  }).join(', '));
+  if (r.chief) lines.push('Αλυτάρχης: ' + esc(r.chief));
+  return lines;
+}
 function buildSeriesPrint(){
   var n = state.seriesRaces.length;
   var Q = seriesQualify();
-  var h = printHeader('Συγκεντρωτική Κατάταξη' + (state.quota.myRegion ? ' · ' + state.quota.myRegion : ''), MODES[state.mode].title + ' · ' + n + ' αγώνες', true, state.seriesSponsors || []);
+  var h = printHeader('Συγκεντρωτική Κατάταξη' + (state.quota.myRegion ? ' · ' + state.quota.myRegion : ''), MODES[state.mode].title + ' · ' + n + ' αγώνες', true, []);
   h += '<table style="margin-bottom:8px;">';
   state.seriesRaces.forEach(function(r, i){
-    h += '<tr><td style="width:34px;"><b>'+(i+1)+'ος</b></td><td>'+esc(r.name)+'</td><td class="n">'+new Date(r.savedAt).toLocaleDateString("el-GR")+'</td></tr>';
+    var meta = seriesRaceMeta(r, 12);
+    h += '<tr><td style="width:34px; vertical-align:top;"><b>'+(i+1)+'ος</b></td><td>'+esc(r.name) +
+      (meta.length ? '<div style="font-size:7.5pt; color:#8A93A0; line-height:1.5;">'+meta.join('<br>')+'</div>' : '') +
+      '</td><td class="n" style="vertical-align:top;">'+new Date(r.savedAt).toLocaleDateString("el-GR")+'</td></tr>';
   });
   h += '</table><table><tr><th class="c">#</th><th>Αθλητής</th><th>Σύλλογος</th>';
   for (var i = 0; i < n; i++) h += '<th class="c">'+(i+1)+'ος</th>';
@@ -1117,7 +1122,7 @@ function buildSeriesPrint(){
     h += '<tr><td><b>Σύνολο</b></td><td class="c"><b>'+Q.alloc.total+'</b></td><td></td><td class="c"><b>'+Q.alloc.rows.reduce(function(s,r){ return s + r.seats; }, 0)+'</b></td></tr></table>';
     h += '<div style="font-size:8pt;color:#5A6472;">Έγκυροι: Άνδρες με τουλάχιστον '+VALID_RACES+' αγώνες (άρθρο 3.1). Μέθοδος μεγαλύτερου υπολοίπου. «Μη έγκυρος»: μένει στη θέση του χωρίς πρόκριση.</div></div>';
   }
-  return { html: h + printFooter(true, state.seriesSponsors || []), file: "Synkentrotiki_Katataxi" };
+  return { html: h + printFooter(true, []), file: "Synkentrotiki_Katataxi" };
 }
 
 function printPdf(kind){
@@ -1698,6 +1703,23 @@ function pairBreakdown(a, weights){
   var p = pairParts(a, weights);
   return p.map(function(x){ return x.c.pts; }).join(" + ") + " = " + p.reduce(function(s, x){ return s + x.c.pts; }, 0);
 }
+// A club's logo (or its colour dot when it has none).
+function clubMark(logo, color, px){
+  return logo ? '<img src="'+logo+'" alt="" style="width:'+px+'px; height:'+px+'px; border-radius:50%; object-fit:cover; flex-shrink:0;" />'
+    : '<span style="width:'+px+'px; height:'+px+'px; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0;"><span style="width:'+Math.round(px*0.56)+'px; height:'+Math.round(px*0.56)+'px; border-radius:50%; background:'+(color || "#8A93A0")+'; display:inline-block;"></span></span>';
+}
+// A pair, one athlete per line, each with the logo of HIS OWN club:
+// [λογότυπο] Όνομα · Σύλλογος. opts.badge puts 👥 in front (aligned).
+function pairMembersHtml(a, opts){
+  opts = opts || {};
+  var px = opts.size || 16;
+  return '<span style="display:inline-block; vertical-align:middle; line-height:1.3; min-width:0;">' + a.pair.map(function(m, k){
+    return '<span style="display:flex; align-items:center; gap:5px; padding:1px 0;">' +
+      (opts.badge ? (k === 0 ? '<span>👥</span>' : '<span style="visibility:hidden;">👥</span>') : '') +
+      clubMark(m.logo, m.color, px) +
+      '<span style="min-width:0;">' + esc(m.athleteName) + ' <span style="color:#8A93A0; font-size:11px;">· ' + esc(m.clubName) + '</span></span></span>';
+  }).join('') + '</span>';
+}
 // Names (and clubs) of a seat — a pair on two lines with 👥.
 function seatNameHtml(a, opts){
   opts = opts || {};
@@ -1731,7 +1753,7 @@ function renderPairsCard(){
       var A = findAthlete(p[0]), B = findAthlete(p[1]);
       h += '<div style="display:flex; align-items:center; gap:8px; padding:6px 0; border-top:1px solid #F0EBDD;">' +
         '<span style="font-weight:bold; color:'+NAVY+'; min-width:22px;">'+(i+1)+'.</span><div style="flex:1; min-width:0; font-size:13px; line-height:1.35;">' +
-        [A, B].map(function(g){ return esc(g.athlete.name) + ' <span style="color:#8A93A0; font-size:11px;">· '+esc(g.club.name)+(g.athlete.absent?' · <b style="color:#A33;">απών</b>':'')+'</span>'; }).join('<br>') +
+        [A, B].map(function(g){ return '<div style="display:flex; align-items:center; gap:6px; padding:1px 0;">' + clubMark(g.club.logo, g.club.color, 16) + '<span style="min-width:0;">' + esc(g.athlete.name) + ' <span style="color:#8A93A0; font-size:11px;">· '+esc(g.club.name)+(g.athlete.absent?' · <b style="color:#A33;">απών</b>':'')+'</span></span></div>'; }).join('') +
         '</div><span style="cursor:pointer; color:#A33; font-size:16px; padding:0 4px;" onclick="removePair('+i+')" title="Διάλυση ζευγαριού">✕</span></div>';
     });
     h += '</div>';
@@ -2277,7 +2299,9 @@ function snapshotDraw(id, name, savedAt){
     sectorCapacities: state.sectorCapacities, weights: state.weights, counts: state.counts || [],
     rankings: state.rankings, teamRankings: state.teamRankings,
     roundAbsent: state.roundAbsent || {}, rounds: isChampionship() ? state.rounds : null, currentRound: state.currentRound,
-    raceInfo: state.raceInfo,
+    // Αντίγραφο: οι αλλαγές στα στοιχεία του τρέχοντος αγώνα δεν πρέπει να
+    // περνούν στους ήδη αποθηκευμένους (π.χ. χορηγοί στη συγκεντρωτική).
+    raceInfo: JSON.parse(JSON.stringify(state.raceInfo || blankRaceInfo())),
     absentAthletes: state.mode === "panhellenic" ? [] : [].concat.apply([], modeClubs().map(function(c){
       return c.athletes.filter(function(a){ return a.absent; }).map(function(a){ return { name: a.name, clubName: c.name }; });
     }))
@@ -2312,7 +2336,7 @@ function loadSavedDraw(id){
   state.counts = draw.counts || null;
   state.countDraft = null;
   state.currentDrawId = draw.id;
-  if (draw.raceInfo) state.raceInfo = Object.assign(blankRaceInfo(), draw.raceInfo);
+  if (draw.raceInfo) state.raceInfo = Object.assign(blankRaceInfo(), JSON.parse(JSON.stringify(draw.raceInfo)));
   state.rankings = draw.rankings || null;
   state.teamRankings = draw.teamRankings || null;
   state.saveNameInput = draw.name || "";
@@ -2709,15 +2733,17 @@ function renderFinalRanking(){
     var top3 = a.place <= 3;
     html += '<div style="display:flex; align-items:center; gap:10px; padding:10px 14px; border-top:'+(idx===0?"none":"1px solid #F0EBDD")+'; background:'+(top3?"#FBF6E8":"#fff")+';">';
     html += placeBadge(a.place, 30, true);
-    if (a.logo) html += '<img src="'+a.logo+'" style="width:20px;height:20px;border-radius:50%;object-fit:cover;" />';
-    else html += '<span style="width:11px;height:11px;border-radius:50%;background:'+a.color+';display:inline-block;"></span>';
-    html += '<div style="flex:1; min-width:0;"><div style="font-size:14px; color:'+INK+'; overflow:hidden; text-overflow:ellipsis; '+(a.pair?'':'white-space:nowrap;')+'">'+seatNameHtml(a, { clubs: !!a.pair })+'</div>';
+    if (!a.pair){
+      if (a.logo) html += '<img src="'+a.logo+'" style="width:20px;height:20px;border-radius:50%;object-fit:cover;" />';
+      else html += '<span style="width:11px;height:11px;border-radius:50%;background:'+a.color+';display:inline-block;"></span>';
+    }
+    html += '<div style="flex:1; min-width:0;"><div style="font-size:14px; color:'+INK+'; overflow:hidden; text-overflow:ellipsis; '+(a.pair?'':'white-space:nowrap;')+'">'+(a.pair ? pairMembersHtml(a, { size: 20 }) : esc(a.athleteName))+'</div>';
     var sectorLine = a.roundAbsent
       ? '<span style="color:#A33; font-weight:bold;">'+statusLabel(a.roundAbsent)+'</span> · Τομέας '+sectorLabel(a.sector)
       : a.sector === null
       ? '<span style="color:#A33; font-weight:bold;">ΑΠΩΝ</span>'
       : 'Τομέας '+sectorLabel(a.sector)+' / Θέση '+a.localPosition;
-    html += '<div style="font-size:11.5px; color:#8A93A0;">'+esc(a.clubName)+' · '+sectorLine+(a.sponsor?' <span style="color:#B8862F; font-style:italic;">· '+esc(a.sponsor)+'</span>':'')+'</div></div>';
+    html += '<div style="font-size:11.5px; color:#8A93A0;">'+(a.pair ? '👥' : esc(a.clubName))+' · '+sectorLine+(a.sponsor?' <span style="color:#B8862F; font-style:italic;">· '+esc(a.sponsor)+'</span>':'')+'</div></div>';
     html += '<div style="text-align:right; flex-shrink:0;"><div style="font-size:13px; font-weight:bold; color:'+NAVY+';">'+a.score+' Β/Π</div>';
     html += '<div style="font-size:11px; color:#8A93A0;">'+(a.sector===null || a.roundAbsent ? '—' : a.fish+' ψ. · '+a.weight+' β.')+'</div></div>';
     html += '</div>';
@@ -2895,7 +2921,9 @@ function renderSeries(){
   html += '<div style="background:#fff; border:1px solid #E4DFCF; border-radius:5px; padding:8px 12px; margin-bottom:12px; font-size:12px; color:#5A6472; line-height:1.6;">';
   state.seriesRaces.forEach(function(r, i){
     var dateStr = new Date(r.savedAt).toLocaleDateString("el-GR", { day:"2-digit", month:"2-digit", year:"numeric" });
-    html += '<div><b style="color:'+NAVY+';">'+(i+1)+'ος</b> · '+esc(r.name)+' <span style="color:#8A93A0;">('+dateStr+')</span></div>';
+    var meta = seriesRaceMeta(r, 14);
+    html += '<div style="'+(i ? 'margin-top:4px;' : '')+'"><b style="color:'+NAVY+';">'+(i+1)+'ος</b> · '+esc(r.name)+' <span style="color:#8A93A0;">('+dateStr+')</span>' +
+      (meta.length ? '<div style="font-size:11px; color:#8A93A0; line-height:1.5;">'+meta.join('<br>')+'</div>' : '') + '</div>';
   });
   html += '</div>';
   var Q = seriesQualify();
@@ -3189,9 +3217,11 @@ function renderDraw(){
       html += '<div style="width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;flex-shrink:0;z-index:1;background:'+(filled?NAVY:"#fff")+';border:2px solid '+(filled?GOLD:"#D8D2C0")+';color:'+(filled?"#fff":"#B7BFC9")+';">'+p+'</div>';
       html += '<div style="font-size:13.5px; display:flex; align-items:center; gap:6px; flex:1; min-width:0;">';
       if (filled){
-        if (slot.logo) html += '<img src="'+slot.logo+'" style="width:16px;height:16px;border-radius:50%;object-fit:cover;" />';
-        else html += '<span style="width:9px;height:9px;border-radius:50%;background:'+slot.color+';display:inline-block;flex-shrink:0;"></span>';
-        if (slot.pair) html += '<span style="overflow:hidden;'+(state.roundAbsent && state.roundAbsent[slot.athleteId] ? 'text-decoration:line-through; opacity:0.55;' : '')+'">'+seatNameHtml(slot, { clubs: true })+'</span>';
+        if (!slot.pair){
+          if (slot.logo) html += '<img src="'+slot.logo+'" style="width:16px;height:16px;border-radius:50%;object-fit:cover;" />';
+          else html += '<span style="width:9px;height:9px;border-radius:50%;background:'+slot.color+';display:inline-block;flex-shrink:0;"></span>';
+        }
+        if (slot.pair) html += '<span style="overflow:hidden;'+(state.roundAbsent && state.roundAbsent[slot.athleteId] ? 'text-decoration:line-through; opacity:0.55;' : '')+'">'+pairMembersHtml(slot, { badge: true, size: 16 })+'</span>';
         else html += '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+(state.roundAbsent && state.roundAbsent[slot.athleteId] ? 'text-decoration:line-through; opacity:0.55;' : '')+'">'+esc(slot.athleteName)+'</span><span style="color:#8A93A0; font-size:11px; white-space:nowrap;">· '+esc(slot.clubName)+'</span>';
         if (state.mode === "panhellenic" && slot.participation && slot.participation !== "both"){
           html += '<span class="part-tag '+slot.participation+'" style="cursor:default;" title="'+PARTICIPATION[slot.participation].full+'">'+PARTICIPATION[slot.participation].label+'</span>';
