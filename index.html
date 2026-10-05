@@ -88,7 +88,7 @@ var ROSTER_KEY = "casting/roster";
 var SAVED_DRAWS_KEY = "casting/saved_draws";
 var MODE_KEY = "casting/mode";
 var APP_NAME = "Κληρώσεις & Διαχείριση Αγώνων Κάστινγκ";
-var APP_VERSION = "v1.14 · 04/10/2026";
+var APP_VERSION = "v1.15 · 05/10/2026";
 var CURRENT_KEY = "casting/current_race";
 var QUOTA_KEY = "casting/quota";
 var PAIRS_KEY = "casting/pairs";
@@ -318,7 +318,8 @@ var state = {
   pendingDelete: null,
   editingSponsorFor: null,
   rosterLoaded: false,
-  quota: { slots: 35, minRaces: 3, manual: {} },
+  quota: { slots: 35, minRaces: 3, manual: {}, locked: {} },
+  seriesQuota: null,
   saveRegionInput: "",
   seriesRegion: "",
   seriesSeats: 0,
@@ -836,6 +837,7 @@ function openSeriesRanking(){
   state.seriesRegion = Object.keys(keys).length === 1 ? regName : "";
   var qrow = state.seriesRegion ? quotaRegions().rows.find(function(x){ return x.key === regionKey(state.seriesRegion); }) : null;
   state.seriesSeats = qrow ? qrow.seats : 0;
+  state.seriesQuota = quotaState();
   state.seriesRaces = races.map(function(d){
     var ri = d.raceInfo || {};
     return { name: d.name, savedAt: d.savedAt, chief: String(ri.chief || "").trim(),
@@ -853,7 +855,7 @@ function exportSeriesToExcel(){
   var rows = state.seriesRows.map(function(a, idx){
     var r = [a.place, a.athleteName, a.clubName, a.sponsor || ""];
     a.per.forEach(function(x){ r.push(x.score + (x.missing ? " (ΑΠ)" : x.roundAbsent ? " (" + statusLabel(x.roundAbsent) + ")" : ""), x.missing ? "" : x.weight, x.missing ? "" : x.fish); });
-    r.push(a.totalScore, a.totalWeight, a.totalFish, a.longest || "", a.raced, a.raced >= minRaces() ? "ΝΑΙ" : "ΟΧΙ", CATEGORY[a.category].full, (Q.statusOf[idx] && Q.statusOf[idx].text) || "");
+    r.push(a.totalScore, a.totalWeight, a.totalFish, a.longest || "", a.raced, a.raced >= minRaces() ? "ΝΑΙ" : "ΟΧΙ", CATEGORY[a.category].full, Q.statusOf[idx] && Q.statusOf[idx].kind === "q" ? (state.seriesQuota && state.seriesQuota.final ? "Προκρίνεται" : "Προκρίνεται (προσωρινά)") : (Q.statusOf[idx] && Q.statusOf[idx].text) || "");
     return r;
   });
   var today = new Date().toISOString().slice(0,10);
@@ -1114,6 +1116,7 @@ function seriesRaceMeta(r, logoPx){
 function buildSeriesPrint(){
   var n = state.seriesRaces.length;
   var Q = seriesQualify();
+  var qFinal = !!(state.seriesQuota && state.seriesQuota.final);
   var h = printHeader('Συγκεντρωτική Κατάταξη' + (state.seriesRegion ? ' — ' + state.seriesRegion : ''),
     MODES[state.mode].title + ' · ' + n + ' αγώνες · έγκυρη συμμετοχή: τουλάχιστον ' + minRaces() + (Q.judged && Q.hasRegion ? ' · προκρίνονται ' + Q.mySeats : ''), true, []);
   h += '<table style="margin-bottom:8px;">';
@@ -1131,10 +1134,15 @@ function buildSeriesPrint(){
     h += '<tr class="'+(st.kind==="q"?'top':'')+'">'+placeCell(a.place)+athleteTd(a.athleteName, a.sponsor)+'<td>'+esc(a.clubName || '')+'</td>';
     a.per.forEach(function(x){ h += '<td class="c">'+x.score+'<br><span style="font-size:7.5pt;color:#8A93A0;">'+(x.missing?'απ':x.roundAbsent?statusLabel(x.roundAbsent).toLowerCase():x.weight+'β')+'</span></td>'; });
     h += '<td class="c"><b>'+a.totalScore+'</b></td><td class="n">'+a.totalWeight+'</td><td class="c">'+a.raced+'</td>' +
-      '<td style="'+(st.kind==="invalid"?'color:#A33;':st.kind==="q"?'font-weight:bold;':'')+'">'+esc(st.text || '')+'</td></tr>';
+      '<td style="'+(st.kind==="invalid"?'color:#A33;':st.kind==="q"?'font-weight:bold; color:'+(qFinal ? QUOTA_GREEN : QUOTA_ORANGE)+';':'')+'">'+esc(st.text || '')+'</td></tr>';
   });
   h += '</table>';
-  if (Q.judged && Q.hasRegion) h += '<div style="font-size:8pt; color:#5A6472; margin-top:6px;">'+esc(QUOTA_NOTE)+'</div>';
+  if (Q.judged && Q.hasRegion){
+    var qs = state.seriesQuota || quotaState();
+    h += '<div style="font-size:8pt; margin-top:8px; padding:5px 8px; border-radius:3px; page-break-inside:avoid; ' + (qs.final
+      ? 'border:0.75pt solid '+QUOTA_GREEN+'; background:#EEF6F0; color:'+QUOTA_GREEN+';"><b>Οριστική κατανομή:</b> '+esc(quotaNoteText(qs).replace(/^Οριστική κατανομή\. /, ""))
+      : 'border:0.75pt solid '+QUOTA_ORANGE+'; background:#FCF1E8; color:#8A4512;"><b>Σημείωση:</b> '+esc(QUOTA_NOTE)+' <b>(κλειδωμένες '+qs.nLocked+' από '+qs.n+' Περιφέρειες)</b>') + '</div>';
+  }
   return { html: h + printFooter(true, []), file: "Synkentrotiki_Katataxi" };
 }
 
@@ -2859,10 +2867,46 @@ function setQuotaNum(field, val){
   else state.quota.slots = n >= 0 ? n : 0;
   persistQuota(); render();
 }
+function lockKeyOf(key){ return Object.keys(state.quota.locked || {}).find(function(n){ return regionKey(n) === key; }); }
+function lockOf(key){ var k = lockKeyOf(key); return k !== undefined ? state.quota.locked[k] : null; }
+// Κλείδωμα: η περιφέρεια κρατά τους έγκυρους εκείνης της στιγμής, ό,τι κι αν
+// αλλάξει μετά (νέοι αγώνες, ελάχιστοι αγώνες, χειροκίνητος αριθμός).
+function lockRegion(key){
+  var r = quotaRegions().rows.find(function(x){ return x.key === key; });
+  if (!r || r.locked) return;
+  if (!window.confirm("Κλείδωμα της κατανομής για «" + r.name + "» με " + r.valid + " έγκυρους;\nΑπό εδώ και πέρα η περιφέρεια θα χρησιμοποιεί αυτόν τον αριθμό.")) return;
+  state.quota.locked = state.quota.locked || {};
+  state.quota.locked[r.name] = { valid: r.valid, at: new Date().toISOString() };
+  persistQuota(); render();
+}
+function unlockRegion(key){
+  var k = lockKeyOf(key);
+  if (k === undefined) return;
+  if (!window.confirm("Ξεκλείδωμα της κατανομής για «" + k + "»;\nΟ αριθμός έγκυρων θα ξαναγίνει επεξεργάσιμος.")) return;
+  delete state.quota.locked[k];
+  persistQuota(); render();
+}
+function fmtDay(iso){ var d = new Date(iso); return isNaN(d) ? "" : d.toLocaleDateString("el-GR", { day:"2-digit", month:"2-digit", year:"numeric" }); }
+// Οριστική = υπάρχει ≥1 περιφέρεια και είναι όλες κλειδωμένες.
+function quotaState(Q){
+  Q = Q || quotaRegions();
+  var locked = Q.rows.filter(function(r){ return r.locked; });
+  var last = locked.reduce(function(m, r){ return !m || String(r.locked.at) > m ? String(r.locked.at) : m; }, "");
+  return { final: Q.rows.length > 0 && locked.length === Q.rows.length, nLocked: locked.length, n: Q.rows.length, lastAt: last };
+}
+var QUOTA_ORANGE = "#C8641E", QUOTA_GREEN = "#2E6B3E";
+function quotaNoteText(qs){
+  return qs.final ? "Οριστική κατανομή. Η ποσόστωση κάθε Περιφέρειας οριστικοποιήθηκε στις " + fmtDay(qs.lastAt) + " με βάση τον τελικό αριθμό έγκυρων συμμετοχών ανά Περιφέρεια." : QUOTA_NOTE;
+}
+function quotaNoteHtml(qs, fs){
+  if (qs.final) return '<div style="background:#EEF6F0; border:1px solid '+QUOTA_GREEN+'; border-left:4px solid '+QUOTA_GREEN+'; border-radius:5px; padding:8px 12px; font-size:'+fs+'; color:'+QUOTA_GREEN+'; line-height:1.5;">🔒 '+esc(quotaNoteText(qs))+'</div>';
+  return '<div style="background:#FCF1E8; border:1px solid '+QUOTA_ORANGE+'; border-left:4px solid '+QUOTA_ORANGE+'; border-radius:5px; padding:8px 12px; font-size:'+fs+'; color:#8A4512; line-height:1.5;">⚠️ '+esc(QUOTA_NOTE)+' <b>(κλειδωμένες '+qs.nLocked+' από '+qs.n+' Περιφέρειες)</b></div>';
+}
 function manualKeyOf(key){ return Object.keys(state.quota.manual || {}).find(function(n){ return regionKey(n) === key; }); }
 // Έγκυροι μιας περιφέρειας: αριθμός = αντικατάσταση του αυτόματου· κενό =
 // επιστρέφει ο αυτόματος (για περιφέρεια χωρίς αγώνες γίνεται 0).
 function setRegionValid(key, name, hasRaces, val){
+  if (lockOf(key)){ render(); return; }
   var v = String(val || "").replace(/[^0-9]/g, "");
   var m = state.quota.manual = state.quota.manual || {};
   var old = manualKeyOf(key);
@@ -2884,7 +2928,10 @@ function addManualRegion(){
 }
 function removeManualRegion(key){
   var old = manualKeyOf(key);
-  if (old !== undefined){ delete state.quota.manual[old]; persistQuota(); }
+  if (old !== undefined){ delete state.quota.manual[old]; }
+  var lk = lockKeyOf(key);
+  if (lk !== undefined) delete state.quota.locked[lk];
+  persistQuota();
   render();
 }
 // Περιφέρειες που μάλλον είναι η ίδια με άλλο όνομα (π.χ. «Αττική» και
@@ -2921,12 +2968,14 @@ function quotaRegions(){
     var thr = Math.min(min, races.length);
     var auto = computeSeriesRows(races).filter(function(r){ return r.category === "M" && r.raced >= thr; }).length;
     var mk = manualKeyOf(k), mv = mk !== undefined ? String(manual[mk]) : "";
-    return { key: k, name: g.name, nRaces: races.length, auto: auto, manualVal: mv, valid: mv !== "" ? parseInt(mv, 10) || 0 : auto, hasRaces: true };
+    var lk = lockOf(k);
+    return { key: k, name: g.name, nRaces: races.length, auto: auto, manualVal: mv, valid: lk ? (parseInt(lk.valid, 10) || 0) : mv !== "" ? parseInt(mv, 10) || 0 : auto, hasRaces: true, locked: lk };
   });
   Object.keys(manual).forEach(function(n){
     var k = regionKey(n);
     if (!k || groups[k]) return;
-    rows.push({ key: k, name: n, nRaces: 0, auto: 0, manualVal: String(manual[n]), valid: parseInt(manual[n], 10) || 0, hasRaces: false });
+    var lk = lockOf(k);
+    rows.push({ key: k, name: n, nRaces: 0, auto: 0, manualVal: String(manual[n]), valid: lk ? (parseInt(lk.valid, 10) || 0) : parseInt(manual[n], 10) || 0, hasRaces: false, locked: lk });
   });
   rows.sort(function(a, b){ return a.name.localeCompare(b.name, "el", { sensitivity: "base" }); });
   var alloc = allocateQuota(rows, state.quota.slots || 0);
@@ -2994,7 +3043,8 @@ function seriesQualify(){
 }
 function qualBadge(st){
   if (!st || !st.text) return "";
-  var style = st.kind === "q" ? "background:#2E7D4F;color:#fff;" : st.kind === "alt" ? "background:#FBF6E8;color:#B8862F;border:1px solid #D4AF37;" :
+  var qFinal = state.seriesQuota && state.seriesQuota.final;
+  var style = st.kind === "q" ? "background:"+(qFinal ? QUOTA_GREEN : QUOTA_ORANGE)+";color:#fff;" : st.kind === "alt" ? "background:#FBF6E8;color:#B8862F;border:1px solid #D4AF37;" :
     st.kind === "invalid" ? "background:#fff;color:#A33;border:1px solid #A33;" : "background:#1F3864;color:#fff;";
   return '<span style="display:inline-block; font-size:10px; font-weight:bold; padding:1px 6px; border-radius:8px; margin-top:2px; white-space:nowrap; '+style+'">'+(st.kind==="q"?"✓ ":"")+esc(st.text)+'</span>';
 }
@@ -3013,15 +3063,25 @@ function renderQuota(){
   if (!Q.rows.length) html += '<div style="padding:12px; font-size:12.5px; color:#8A93A0;">Δεν υπάρχουν ακόμα περιφέρειες. Όρισε 📍 περιφέρεια στους αποθηκευμένους αγώνες ή πρόσθεσε περιφέρεια χωρίς αγώνες παρακάτω.</div>';
   Q.rows.forEach(function(r){
     var look = regionLookalike(r, Q.rows);
-    html += '<div style="display:flex; align-items:center; gap:8px; padding:9px 12px; border-top:1px solid #F0EBDD;">';
+    var lc = r.locked ? QUOTA_GREEN : QUOTA_ORANGE;
+    html += '<div style="display:flex; align-items:center; gap:8px; padding:9px 12px; border-top:1px solid #F0EBDD; border-left:4px solid '+lc+'; background:'+(r.locked ? '#F1F8F3' : '#FDF6F0')+';">';
     html += '<div style="flex:1; min-width:0;"><div style="font-weight:bold; color:'+NAVY+'; font-size:14px;">'+esc(r.name)+'</div>';
     html += '<div style="font-size:11px; color:#8A93A0;">'+(r.hasRaces ? r.nRaces+' '+(r.nRaces === 1 ? 'αγώνας' : 'αγώνες')+' στην εφαρμογή · αυτόματα '+r.auto+' έγκυροι' : 'χωρίς αγώνες στην εφαρμογή')+'</div>';
     if (look) html += '<div style="font-size:11px; color:#A33; margin-top:2px;">⚠ Μοιάζει με «'+esc(look.name)+'» — μήπως είναι η ίδια περιφέρεια δύο φορές;</div>';
-    html += '</div>';
-    html += '<input type="text" inputmode="numeric" value="'+esc(r.manualVal)+'" placeholder="'+(r.hasRaces ? r.auto : 0)+'" onchange="setRegionValid('+jsStr(r.key)+', '+jsStr(r.name)+', '+(r.hasRaces?'true':'false')+', this.value)" style="'+inp+' width:70px; text-align:center;" />';
+    html += '<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:4px;">';
+    if (r.locked){
+      html += '<span style="font-size:11.5px; font-weight:bold; color:'+QUOTA_GREEN+';">🔒 Κλειδωμένη · '+fmtDay(r.locked.at)+'</span>';
+      html += '<button onclick="unlockRegion('+jsStr(r.key)+')" style="font-size:11.5px; padding:2px 8px; border-radius:4px; cursor:pointer; background:#fff; color:'+QUOTA_GREEN+'; border:1px solid '+QUOTA_GREEN+';">🔓 Ξεκλείδωμα</button>';
+    } else {
+      html += '<span style="font-size:11.5px; font-weight:bold; color:'+QUOTA_ORANGE+';">⏳ Σε εκκρεμότητα</span>';
+      html += '<button onclick="lockRegion('+jsStr(r.key)+')" style="font-size:11.5px; padding:2px 8px; border-radius:4px; cursor:pointer; background:#fff; color:'+QUOTA_ORANGE+'; border:1px solid '+QUOTA_ORANGE+';">🔒 Κλείδωμα</button>';
+    }
+    html += '</div></div>';
+    if (r.locked) html += '<div style="width:70px; text-align:center; font-size:17px; font-weight:bold; color:'+QUOTA_GREEN+';" title="Κλειδωμένος αριθμός έγκυρων">'+r.valid+'</div>';
+    else html += '<input type="text" inputmode="numeric" value="'+esc(r.manualVal)+'" placeholder="'+(r.hasRaces ? r.auto : 0)+'" onchange="setRegionValid('+jsStr(r.key)+', '+jsStr(r.name)+', '+(r.hasRaces?'true':'false')+', this.value)" style="'+inp+' width:70px; text-align:center;" />';
     html += '<div style="width:54px; text-align:center;"><div style="font-size:19px; font-weight:bold; color:'+NAVY+'; line-height:1.1;">'+(Q.total ? r.seats : '—')+'</div>' +
       (Q.total ? '<div style="font-size:10.5px; color:#8A93A0;">'+r.exact.toFixed(2).replace(".", ",")+(r.extra ? ' ↑' : '')+'</div>' : '') + '</div>';
-    html += '<div style="width:20px; text-align:center;">'+(r.hasRaces ? '' : '<span style="cursor:pointer; color:#A33; font-size:16px;" onclick="removeManualRegion('+jsStr(r.key)+')" title="Αφαίρεση">✕</span>')+'</div>';
+    html += '<div style="width:20px; text-align:center;">'+(r.hasRaces || r.locked ? '' : '<span style="cursor:pointer; color:#A33; font-size:16px;" onclick="removeManualRegion('+jsStr(r.key)+')" title="Αφαίρεση">✕</span>')+'</div>';
     html += '</div>';
   });
   var sumSeats = Q.rows.reduce(function(s, r){ return s + r.seats; }, 0);
@@ -3032,7 +3092,7 @@ function renderQuota(){
   if (state.quotaMsg) html += '<div style="font-size:12px; color:#A33; margin-top:6px;">'+esc(state.quotaMsg)+'</div>';
   html += '<div style="font-size:11.5px; color:#8A93A0; margin-top:12px; line-height:1.55;">Κάθε περιφέρεια παίρνει θέσεις ανάλογα με τους έγκυρους αθλητές της: θέσεις τελικού × έγκυροι περιφέρειας ÷ σύνολο έγκυρων. Κρατιέται το ακέραιο μέρος και οι θέσεις που περισσεύουν πάνε στα μεγαλύτερα υπόλοιπα (↑), ώστε το σύνολο να είναι πάντα '+(q.slots||0)+'. ' +
     'Έγκυροι = Άνδρες με τουλάχιστον '+minRaces()+' αγώνες (ο αποκλεισμός/εγκατάλειψη μετράει ως αγώνας, ο απών όχι)· Γυναίκες και Νέοι δεν μετράνε. Οι έγκυροι βγαίνουν αυτόματα από όλους τους αποθηκευμένους αγώνες κάθε περιφέρειας· γράψε αριθμό για να τον αντικαταστήσεις, σβήσε τον για να επιστρέψει ο αυτόματος.</div>';
-  html += '<div style="background:#FBF6E8; border:1px solid #E8D9A8; border-radius:5px; padding:9px 12px; margin-top:12px; font-size:12px; color:#7A5C1E; line-height:1.5;">ℹ️ '+esc(QUOTA_NOTE)+'</div>';
+  html += '<div style="margin-top:12px;">'+quotaNoteHtml(quotaState(Q), '12px')+'</div>';
   return html;
 }
 
@@ -3056,13 +3116,13 @@ function renderSeries(){
   html += '</div>';
   if (!Q.judged) html += '<div style="font-size:11.5px; color:#B8862F; text-align:center; margin-bottom:8px;">Η εγκυρότητα κρίνεται από τον '+minRaces()+'ο αγώνα και μετά — επίλεξε τουλάχιστον '+minRaces()+' αγώνες.</div>';
   else if (!Q.hasRegion) html += '<div style="font-size:11.5px; color:#8A93A0; text-align:center; margin-bottom:8px;">Χωρίς ενιαία περιφέρεια δεν υπολογίζεται πρόκριση. Όρισε 📍 περιφέρεια στους αγώνες (Αποθηκευμένες κληρώσεις).</div>';
-  else html += '<div style="background:#FBF6E8; border:1px solid #E8D9A8; border-radius:5px; padding:8px 12px; margin-bottom:10px; font-size:11.5px; color:#7A5C1E; line-height:1.5;">ℹ️ '+esc(QUOTA_NOTE)+'</div>';
+  else html += '<div style="margin-bottom:10px;">'+quotaNoteHtml(state.seriesQuota || quotaState(), '11.5px')+'</div>';
   html += '<div style="background:#fff; border:1px solid #E4DFCF; border-radius:5px; overflow-x:auto;">';
   state.seriesRows.forEach(function(r, idx){
     var top3 = r.place <= 3;
     var st = Q.statusOf[idx];
     var st0 = Q.statusOf[idx];
-    html += '<div style="display:flex; align-items:center; gap:8px; padding:9px 10px; min-width:'+(215+n*46)+'px; border-top:'+(idx===0?"none":"1px solid #F0EBDD")+'; background:'+(st0 && st0.kind==="q" ? "#EEF6F0" : top3?"#FBF6E8":"#fff")+';">';
+    html += '<div style="display:flex; align-items:center; gap:8px; padding:9px 10px; min-width:'+(215+n*46)+'px; border-top:'+(idx===0?"none":"1px solid #F0EBDD")+'; background:'+(st0 && st0.kind==="q" ? (state.seriesQuota && state.seriesQuota.final ? "#EEF6F0" : "#FDF6F0") : top3?"#FBF6E8":"#fff")+';">';
     html += placeBadge(r.place, 28, top3);
     html += athleteCell(r).replace(/<\/div>$/, qualBadge(st) + '</div>');
     r.per.forEach(function(x, i){ html += raceCell((i+1)+'ος', x); });
@@ -3431,7 +3491,7 @@ function renderDraw(){
       // Παλιά μορφή (myRegion / others) → manual: οι άλλες περιφέρειες κρατούν τους έγκυρους τους.
       var man = q.manual && typeof q.manual === "object" ? q.manual : {};
       if (Array.isArray(q.others)) q.others.forEach(function(o){ if (o && String(o.name || "").trim() && man[o.name] === undefined) man[String(o.name).trim()] = String(o.valid || 0); });
-      state.quota = { slots: q.slots != null ? (parseInt(q.slots, 10) || 0) : 35, minRaces: parseInt(q.minRaces, 10) >= 1 ? parseInt(q.minRaces, 10) : 3, manual: man };
+      state.quota = { slots: q.slots != null ? (parseInt(q.slots, 10) || 0) : 35, minRaces: parseInt(q.minRaces, 10) >= 1 ? parseInt(q.minRaces, 10) : 3, manual: man, locked: q.locked && typeof q.locked === "object" ? q.locked : {} };
     } } catch(e){} }
     if (libVal){ try { state.library = JSON.parse(libVal); } catch(e){} }
     if (savedVal){ try { state.savedDraws = JSON.parse(savedVal); } catch(e){} }
