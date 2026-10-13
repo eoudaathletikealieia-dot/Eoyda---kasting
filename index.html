@@ -88,7 +88,7 @@ var ROSTER_KEY = "casting/roster";
 var SAVED_DRAWS_KEY = "casting/saved_draws";
 var MODE_KEY = "casting/mode";
 var APP_NAME = "Κληρώσεις & Διαχείριση Αγώνων Κάστινγκ";
-var APP_VERSION = "v1.15 · 05/10/2026";
+var APP_VERSION = "v1.16 · 13/10/2026";
 var CURRENT_KEY = "casting/current_race";
 var QUOTA_KEY = "casting/quota";
 var PAIRS_KEY = "casting/pairs";
@@ -1667,23 +1667,35 @@ function findAthlete(id){
   return null;
 }
 // Pairs whose two athletes still exist (removed athletes drop the pair).
-function validPairs(){
-  return (state.pairs.list || []).filter(function(p){ return p && p[0] !== p[1] && findAthlete(p[0]) && findAthlete(p[1]); });
+// Η λίστα του αγώνα ζευγαριών: ζευγάρια [a, b] και αθλητές που αγωνίζονται
+// μόνοι τους [a] (δηλωμένοι στη λίστα, χωρίς ταίρι).
+function pairEntries(){
+  var seen = {};
+  return (state.pairs.list || []).filter(function(p){
+    if (!p || !p[0] || !findAthlete(p[0]) || seen[p[0]]) return false;
+    if (p[1]){ if (p[1] === p[0] || !findAthlete(p[1]) || seen[p[1]]) return false; seen[p[1]] = true; }
+    seen[p[0]] = true;
+    return true;
+  }).map(function(p){ return p[1] ? [p[0], p[1]] : [p[0]]; });
 }
+function validPairs(){ return pairEntries().filter(function(p){ return p.length === 2; }); }
 function pairedIds(){
   var m = {};
-  validPairs().forEach(function(p){ m[p[0]] = true; m[p[1]] = true; });
+  pairEntries().forEach(function(p){ p.forEach(function(id){ m[id] = true; }); });
   return m;
 }
 function togglePairs(on){ state.pairs.on = !!on; persistPairs(); render(); }
 function setPairMode(m){ state.pairs.mode = m === "sum" ? "sum" : "joint"; persistPairs(); render(); }
 function addPair(){
   var a = document.getElementById("pairSelA"), b = document.getElementById("pairSelB");
-  if (!a || !b || !a.value || !b.value || a.value === b.value) return;
-  state.pairs.list = validPairs().concat([[a.value, b.value]]);
+  // Μόνο ο πρώτος αθλητής = αγωνίζεται μόνος του.
+  if (!a || !b) return;
+  var A = a.value || b.value, B = a.value ? b.value : "";
+  if (!A || A === B) return;
+  state.pairs.list = pairEntries().concat([B ? [A, B] : [A]]);
   persistPairs(); render();
 }
-function removePair(i){ var l = validPairs(); l.splice(i, 1); state.pairs.list = l; persistPairs(); render(); }
+function removePair(i){ var l = pairEntries(); l.splice(i, 1); state.pairs.list = l; persistPairs(); render(); }
 // Draw units: a pair with both athletes present is one seat; a pair with an
 // absent partner leaves the other one alone; everyone else is alone.
 function drawUnits(){
@@ -1771,21 +1783,24 @@ function renderPairsCard(){
   h += '<div style="display:flex; gap:6px; align-items:center; margin-top:10px;">' +
     '<select id="pairSelA" style="'+sel+'">'+opts+'</select><span style="color:#8A93A0; font-size:16px;">+</span><select id="pairSelB" style="'+sel+'">'+opts+'</select>' +
     '<button class="btn-primary-sm" style="align-self:stretch; font-size:20px; padding:0 14px; flex-shrink:0;" onclick="addPair()" title="Νέο ζευγάρι">＋</button></div>';
-  var list = validPairs();
+  var list = pairEntries();
   if (list.length){
     h += '<div style="margin-top:10px;">';
     list.forEach(function(p, i){
-      var A = findAthlete(p[0]), B = findAthlete(p[1]);
+      var A = findAthlete(p[0]), B = p[1] ? findAthlete(p[1]) : null;
       h += '<div style="display:flex; align-items:center; gap:8px; padding:6px 0; border-top:1px solid #F0EBDD;">' +
         '<span style="font-weight:bold; color:'+NAVY+'; min-width:22px;">'+(i+1)+'.</span><div style="flex:1; min-width:0; font-size:13px; line-height:1.35;">' +
-        [A, B].map(function(g){ return '<div style="display:flex; align-items:center; gap:6px; padding:1px 0;">' + clubMark(g.club.logo, g.club.color, 16) + '<span style="min-width:0;">' + esc(g.athlete.name) + ' <span style="color:#8A93A0; font-size:11px;">· '+esc(g.club.name)+(g.athlete.absent?' · <b style="color:#A33;">απών</b>':'')+'</span></span></div>'; }).join('') +
-        '</div><span style="cursor:pointer; color:#A33; font-size:16px; padding:0 4px;" onclick="removePair('+i+')" title="Διάλυση ζευγαριού">✕</span></div>';
+        (B ? [A, B] : [A]).map(function(g){ return '<div style="display:flex; align-items:center; gap:6px; padding:1px 0;">' + clubMark(g.club.logo, g.club.color, 16) + '<span style="min-width:0;">' + esc(g.athlete.name) + ' <span style="color:#8A93A0; font-size:11px;">· '+esc(g.club.name)+(g.athlete.absent?' · <b style="color:#A33;">απών</b>':'')+'</span></span></div>'; }).join('') +
+        (B ? '' : '<div style="font-size:11px; color:#8A93A0; padding-left:22px;">👤 αγωνίζεται μόνος του</div>') +
+        '</div><span style="cursor:pointer; color:#A33; font-size:16px; padding:0 4px;" onclick="removePair('+i+')" title="'+(B ? 'Διάλυση ζευγαριού' : 'Αφαίρεση από τη λίστα')+'">✕</span></div>';
     });
     h += '</div>';
   }
   // Alone in the draw: no partner, or a partner who is absent.
   var single = drawUnits().filter(function(u){ return !u.pair; }).length;
-  h += '<div style="font-size:12px; color:#5A6472; margin-top:8px;"><b>'+list.length+'</b> ζευγάρια · <b>'+single+'</b> αθλητές χωρίς ταίρι (αγωνίζονται μόνοι τους, ο καθένας σε δική του θέση)</div>';
+  var nPairs = list.filter(function(p){ return p.length === 2; }).length;
+  h += '<div style="font-size:11px; color:#8A93A0; margin-top:6px;">Για αθλητή που αγωνίζεται μόνος του: διάλεξε μόνο τον έναν αθλητή και πάτα ＋.</div>';
+  h += '<div style="font-size:12px; color:#5A6472; margin-top:8px;"><b>'+nPairs+'</b> ζευγάρια · <b>'+single+'</b> αθλητές χωρίς ταίρι (αγωνίζονται μόνοι τους, ο καθένας σε δική του θέση)</div>';
   return h + '</div>';
 }
 
