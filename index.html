@@ -88,10 +88,11 @@ var ROSTER_KEY = "casting/roster";
 var SAVED_DRAWS_KEY = "casting/saved_draws";
 var MODE_KEY = "casting/mode";
 var APP_NAME = "Κληρώσεις & Διαχείριση Αγώνων Κάστινγκ";
-var APP_VERSION = "v1.17 · 14/10/2026";
+var APP_VERSION = "v1.18 · 14/10/2026";
 var CURRENT_KEY = "casting/current_race";
 var QUOTA_KEY = "casting/quota";
 var PAIRS_KEY = "casting/pairs";
+var REMOVED_DEFAULTS_KEY = "casting/removed_defaults";
 var MODES = {
   friendly:    { title: "Κληρώσεις Φιλικών",      icon: "🎣", desc: "Καθαρά τυχαία κλήρωση, χωρίς κανέναν περιορισμό συλλόγων ή θέσεων." },
   regional:    { title: "Κληρώσεις Περιφερειακών", icon: "🏅", desc: "Πλήρης κανονισμός (άρθρο 21): κάθε πεντάδα σε διαφορετικούς τομείς, τεχνητός τομέας, συγκεντρωτική κατάταξη αγώνων." },
@@ -317,7 +318,8 @@ var state = {
   error: "",
   pendingDelete: null,
   editingSponsorFor: null,
-  editClub: null,      // πρόχειρο της επεξεργασίας συλλόγου (όνομα, λογότυπο, αθλητές)
+  editClub: null,
+  removedDefaults: [],  // βασικοί σύλλογοι που διαγράφηκαν οριστικά (να μην ξαναμπαίνουν στην εκκίνηση)      // πρόχειρο της επεξεργασίας συλλόγου (όνομα, λογότυπο, αθλητές)
   rosterLoaded: false,
   quota: { slots: 35, minRaces: 3, manual: {}, locked: {} },
   seriesQuota: null,
@@ -1286,6 +1288,8 @@ function addClub(name, logo){
   var color = CLUB_COLORS[state.clubs.length % CLUB_COLORS.length];
   state.clubs.push({ id: uid(), name: trimmed, color: color, logo: logo || null, athletes: [] });
   upsertLibrary(trimmed, logo || null);
+  var rd = state.removedDefaults.filter(function(n){ return normalizeClubName(n) !== normalizeClubName(trimmed); });
+  if (rd.length !== state.removedDefaults.length){ state.removedDefaults = rd; storageSet(REMOVED_DEFAULTS_KEY, JSON.stringify(rd)); }
   persistRoster();
   render();
 }
@@ -1305,9 +1309,40 @@ function confirmOrRun(key, action){
   }
 }
 
+// Οριστική διαγραφή συλλόγου: φεύγει από τη λίστα, από τα «Από προηγούμενες
+// κληρώσεις» και (αν είναι βασικός) δεν ξαναμπαίνει στην εκκίνηση. Οι
+// αθλητές του φεύγουν και από τα ζευγάρια. Οι αποθηκευμένοι αγώνες μένουν.
 function removeClub(id){
   confirmOrRun("club-"+id, function(){
-    state.clubs = state.clubs.filter(function(c){ return c.id !== id; });
+    var c = findClub(id);
+    if (!c) return;
+    var key = normalizeClubName(c.name);
+    state.clubs = state.clubs.filter(function(x){ return x.id !== id; });
+    state.library = state.library.filter(function(l){ return normalizeClubName(l.name) !== key; });
+    storageSet(LIBRARY_KEY, JSON.stringify(state.library));
+    [c.name, c.defaultName].forEach(function(n){
+      if (n && isDefaultClubName(n) && state.removedDefaults.indexOf(n) === -1) state.removedDefaults.push(n);
+    });
+    storageSet(REMOVED_DEFAULTS_KEY, JSON.stringify(state.removedDefaults));
+    dropFromPairs(c.athletes.map(function(a){ return a.id; }));
+    if (state.editClub && state.editClub.id === id) state.editClub = null;
+  });
+}
+// Βγάζει αθλητές από τη λίστα ζευγαριών (ο συνεργάτης τους μένει εκτός λίστας
+// και αγωνίζεται μόνος του).
+function dropFromPairs(ids){
+  if (!ids.length || !state.pairs || !state.pairs.list) return;
+  var gone = {};
+  ids.forEach(function(id){ gone[id] = true; });
+  var before = state.pairs.list.length;
+  state.pairs.list = state.pairs.list.filter(function(p){ return p && !gone[p[0]] && !gone[p[1]]; });
+  if (state.pairs.list.length !== before) persistPairs();
+}
+// Σβήνει μια εγγραφή από τα «Από προηγούμενες κληρώσεις».
+function removeLibraryEntry(name){
+  confirmOrRun("lib-" + name, function(){
+    state.library = state.library.filter(function(l){ return l.name !== name; });
+    storageSet(LIBRARY_KEY, JSON.stringify(state.library));
   });
 }
 
@@ -1315,6 +1350,8 @@ function removeAthlete(clubId, athleteId){
   confirmOrRun("athlete-"+athleteId, function(){
     var c = findClub(clubId);
     if (c) c.athletes = c.athletes.filter(function(a){ return a.id !== athleteId; });
+    dropFromPairs([athleteId]);
+    if (state.editClub && state.editClub.athletes) delete state.editClub.athletes[athleteId];
   });
 }
 
@@ -2719,9 +2756,13 @@ function renderSetup(){
   if (unaddedLibrary.length > 0){
     html += '<div style="margin-bottom:14px;"><div style="font-size:12px; color:#8A93A0; margin-bottom:6px;">Από προηγούμενες κληρώσεις:</div><div>';
     unaddedLibrary.forEach(function(l){
-      html += '<button class="chip-btn" onclick="addClub('+jsStr(l.name)+', '+jsStr(l.logo)+')">';
+      var libArmed = state.pendingDelete === "lib-" + l.name;
+      html += '<span style="display:inline-flex; align-items:center; margin:0 6px 6px 0;">';
+      html += '<button class="chip-btn" style="margin:0; border-top-right-radius:0; border-bottom-right-radius:0;" onclick="addClub('+jsStr(l.name)+', '+jsStr(l.logo)+')" title="Προσθήκη στη λίστα">';
       if (l.logo) html += '<img src="'+l.logo+'" style="width:14px;height:14px;border-radius:50%;margin-right:5px;" />';
       html += esc(l.name) + '</button>';
+      html += '<button onclick="removeLibraryEntry('+jsStr(l.name)+')" title="Οριστική διαγραφή" style="align-self:stretch; border:1px solid '+(libArmed ? '#A33' : '#CFC7B0')+'; border-left:none; border-radius:0 20px 20px 0; background:'+(libArmed ? '#A33' : '#fff')+'; color:'+(libArmed ? '#fff' : '#A33')+'; font-size:'+(libArmed ? '11px' : '12px')+'; font-weight:bold; padding:0 9px; cursor:pointer;">'+(libArmed ? 'Σίγουρα;' : '✕')+'</button>';
+      html += '</span>';
     });
     html += '</div></div>';
   }
@@ -3651,9 +3692,10 @@ function renderDraw(){
 /* ---------- boot ---------- */
 (function boot(){
   initDb().then(function(){
-    return Promise.all([storageGet(LIBRARY_KEY), storageGet(ROSTER_KEY), storageGet(SAVED_DRAWS_KEY), storageGet(MODE_KEY), storageGet(CURRENT_KEY), storageGet(QUOTA_KEY), storageGet(PAIRS_KEY)]);
+    return Promise.all([storageGet(LIBRARY_KEY), storageGet(ROSTER_KEY), storageGet(SAVED_DRAWS_KEY), storageGet(MODE_KEY), storageGet(CURRENT_KEY), storageGet(QUOTA_KEY), storageGet(PAIRS_KEY), storageGet(REMOVED_DEFAULTS_KEY)]);
   }).then(function(results){
     var libVal = results[0], rosterVal = results[1], savedVal = results[2], currentVal = results[4], quotaVal = results[5], pairsVal = results[6];
+    if (results[7]){ try { var rdv = JSON.parse(results[7]); if (Array.isArray(rdv)) state.removedDefaults = rdv; } catch(e){} }
     if (pairsVal){ try { var pv = JSON.parse(pairsVal); if (pv && typeof pv === "object") state.pairs = { on: !!pv.on, mode: pv.mode === "sum" ? "sum" : "joint", list: Array.isArray(pv.list) ? pv.list : [] }; } catch(e){} }
     if (quotaVal){ try { var q = JSON.parse(quotaVal); if (q && typeof q === "object") {
       // Παλιά μορφή (myRegion / others) → manual: οι άλλες περιφέρειες κρατούν τους έγκυρους τους.
@@ -3672,6 +3714,7 @@ function renderDraw(){
       var merged = loadedRoster.map(function(c){ return Object.assign({}, c, { logo: c.logo || (c.noLogo ? null : DEFAULT_LOGOS[c.defaultName || c.name]) || null }); });
       DEFAULT_ROSTER_RAW.forEach(function(entry){
         var clubName = entry[0];
+        if (state.removedDefaults.indexOf(clubName) !== -1) return;
         if (!merged.some(function(c){ return c.name === clubName || c.defaultName === clubName; })){
           merged.push({ id: uid(), name: clubName, color: CLUB_COLORS[merged.length % CLUB_COLORS.length], logo: DEFAULT_LOGOS[clubName] || null, athletes: [] });
         }
