@@ -88,11 +88,55 @@ var ROSTER_KEY = "casting/roster";
 var SAVED_DRAWS_KEY = "casting/saved_draws";
 var MODE_KEY = "casting/mode";
 var APP_NAME = "Κληρώσεις & Διαχείριση Αγώνων Κάστινγκ";
-var APP_VERSION = "v1.18 · 14/10/2026";
+var APP_VERSION = "v1.22 · 09/11/2026";
 var CURRENT_KEY = "casting/current_race";
 var QUOTA_KEY = "casting/quota";
 var PAIRS_KEY = "casting/pairs";
 var REMOVED_DEFAULTS_KEY = "casting/removed_defaults";
+var REGION_SEL_KEY = "casting/region_sel";
+var REGION_ORDER_KEY = "casting/region_order";
+var ATHLETE_MEMO_KEY = "casting/athlete_memo";
+var PAN_RED_KEY = "casting/pan_red_carry";
+// Οι περιφέρειες με τα κανονικά τους ονόματα· regionKey() τις αναγνωρίζει
+// όπως κι αν γράφτηκαν (από τη ρίζα του ονόματος).
+// Το κάστινγκ έχει 3 περιφερειακά πρωταθλήματα.
+var REGIONS = ["Περιφέρεια Αττικής", "Περιφέρεια Αν. Μακεδονίας & Θράκης", "Περιφέρεια Πελοποννήσου"];
+var REGION_ROOTS = ["αττικ", "μακεδον", "πελοποννησ"];
+var REGION_ROOTS_EXTRA = [[], ["θρακ"], []];
+// Λίστα συμμετοχών: [σύλλογος, ΟΝΟΜΑ (κεφαλαία, χωρίς τόνους), αρ. μητρώου ή "", δείκτης περιφέρειας (0–2)].
+// Λίστα Συμμετοχής Αθλητών 2026-27 κάστινγκ (σύλλογοι με τα ονόματα της εφαρμογής).
+var ENTRIES = [
+  ["ΑΝΟΒ", "ΑΝΔΡΕΟΥ ΑΝΑΣΤΑΣΙΟΣ", "", 2],
+  ["ΑΝΟΒ", "ΓΕΩΡΓΙΟΥ ΓΕΩΡΓΙΟΣ", "", 2],
+  ["ΑΝΟΒ", "ΓΚΙΚΟΠΟΥΛΟΣ ΛΟΥΚΑΣ", "", 2],
+  ["ΑΝΟΒ", "ΔΕΔΕΣ ΕΥΘΥΜΙΟΣ", "", 2],
+  ["ΑΝΟΒ", "ΚΑΣΤΡΙΝΟΣ ΚΩΝΣΤΑΝΤΙΝΟΣ", "", 2],
+  ["ΑΝΟΒ", "ΚΑΣΤΡΙΝΟΣ ΣΠΥΡΙΔΩΝ", "", 2],
+  ["ΑΝΟΒ", "ΚΟΚΚΙΝΟΣ ΑΛΕΞΑΝΔΡΟΣ", "", 2],
+  ["ΑΝΟΒ", "ΚΟΝΟΒΕΣΗΣ ΑΘΑΝΑΣΙΟΣ", "", 2],
+  ["ΑΝΟΒ", "ΛΙΑΚΟΥΡΑΣ ΓΕΩΡΓΙΟΣ", "", 2],
+  ["ΑΝΟΒ", "BUTU CRISTIAN", "", 2],
+  ["ΑΝΟΒ", "ΠΑΠΑΚΩΝΣΤΑΝΤΙΝΟΥ ΓΕΩΡΓΙΟΣ", "", 2],
+  ["ΑΝΟΒ", "ΡΟΔΙΤΗΣ ΕΜΜΑΝΟΥΗΛ", "", 2],
+  ["ΑΝΟΒ", "ΣΟΦΡΩΝΙΑΔΗΣ ΕΥΘΥΜΙΟΣ", "", 2],
+  ["ΑΝΟΒ", "ΣΤΑΜΠΟΛΗΣ ΕΥΑΓΓΕΛΟΣ", "", 2],
+  ["ΔΕΛΦΙΝΙΑ", "ΚΟΥΚΟΥΛΙΘΡΑΣ ΗΛΙΑΣ", "14653", 0],
+  ["ΝΟΤΚ", "ΔΡΟΣΟΣ ΑΝΤΩΝΙΟΣ", "7669", 0],
+  ["ΝΟΤΚ", "ΠΑΠΑΔΟΠΟΥΛΟΣ ΒΑΣΙΛΕΙΟΣ", "13932", 0],
+  ["ΝΟΤΚ", "ΡΕΖΕΚ ΝΙΝΤΑΛ", "12947", 0],
+  ["ΝΟΤΚ", "ΡΕΤΣΙΛΑΣ ΦΩΤΙΟΣ", "13583", 0],
+  ["ΝΟΘΑΚ", "ΑΠΑΤΖΙΔΗΣ ΗΛΙΑΣ", "14937", 1],
+  ["ΝΟΘΑΚ", "ΚΡΑΝΑΣ ΣΤΕΛΙΟΣ", "14883", 1],
+  ["ΝΟΘΑΚ", "ΜΠΕΛΛΙΟΣ ΒΑΣΙΛΕΙΟΣ", "", 1],
+  ["ΝΟΘΑΚ", "ΠΑΠΑΔΟΠΟΥΛΟΣ ΠΑΝΑΓΙΩΤΗΣ", "14841", 1],
+  ["ΝΟΘΑΚ", "ΠΑΣΧΑΛΗΣ ΓΙΩΡΓΟΣ", "15028", 1],
+  ["ΝΟΘΑΚ", "POPOV ALEKSEI", "14781", 1],
+  ["ΝΟΘΑΚ", "ΡΗΝΩΤΑΣ ΓΙΑΝΝΗΣ", "14528", 1],
+  ["ΝΟΘΑΚ", "SEZGIN HAMBIL", "15927", 1],
+  ["ΝΟΘΑΚ", "ΦΙΤΣΙΟΣ ΑΝΤΩΝΗΣ", "14880", 1]
+];
+var ENTRIES_TITLE = "Λίστα συμμετοχών 2026-27";
+var ENTRIES_DEADLINE = "30/10/2026";
 var MODES = {
   friendly:    { title: "Κληρώσεις Φιλικών",      icon: "🎣", desc: "Καθαρά τυχαία κλήρωση, χωρίς κανέναν περιορισμό συλλόγων ή θέσεων." },
   regional:    { title: "Κληρώσεις Περιφερειακών", icon: "🏅", desc: "Πλήρης κανονισμός (άρθρο 21): κάθε πεντάδα σε διαφορετικούς τομείς, τεχνητός τομέας, συγκεντρωτική κατάταξη αγώνων." },
@@ -118,7 +162,14 @@ var CATEGORY = {
 };
 var CATEGORY_CYCLE = ["M", "W", "Y"];
 function categoryOf(a){ return a && CATEGORY[a.category] ? a.category : "M"; }
-function statusLabel(v){ return v === "dq" ? "ΑΠΟΚΛ." : "ΑΠΩΝ"; }
+// Κατάσταση στον αγώνα (άρθρα 44, 72, 73): ΑΠΩΝ · ΚΟΚΚΙΝΗ (αποκλεισμός) ·
+// ΕΓΚΑΤ. (εγκατάλειψη) — όλα με μέγιστο Β/Π τομέα +1. «dq» = παλιοί αγώνες (ΑΠΟΚΛ.).
+var STATUS_LABELS = { abs: "ΑΠΩΝ", red: "ΚΟΚΚΙΝΗ", ret: "ΕΓΚΑΤ.", dq: "ΑΠΟΚΛ." };
+var STATUS_CYCLE = ["", "abs", "red", "ret"];
+function statusLabel(v){ return STATUS_LABELS[v] || "ΑΠΩΝ"; }
+function cardOf(id){ return (state.cards && state.cards[id]) || null; }
+function yellowOf(id){ var c = cardOf(id); return c ? (c.y || 0) : 0; }
+function cardNote(id){ var c = cardOf(id); return c ? (c.note || "") : ""; }
 function teamSizeOf(c){ var n = parseInt(c && c.teamSize, 10); return n > 0 ? n : 5; }
 function drawModeOf(d){ return d && MODES[d.mode] ? d.mode : "regional"; }
 var LOGO_FIPSM = "data:image/jpeg;base64,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";
@@ -302,6 +353,7 @@ var state = {
   teamStandings: [],
   teamRankings: null,
   roundAbsent: {},
+  cards: {},            // κάρτες ανά αθλητή στον αγώνα: {id: {y: 0|1|2, note: "αιτιολογία", auto}}
   rounds: null,        // Πανελλήνιο: the 3 αγωνιστικές of one championship draw
   currentRound: 0,
   champTab: "ind",
@@ -319,7 +371,16 @@ var state = {
   pendingDelete: null,
   editingSponsorFor: null,
   editClub: null,
-  removedDefaults: [],  // βασικοί σύλλογοι που διαγράφηκαν οριστικά (να μην ξαναμπαίνουν στην εκκίνηση)      // πρόχειρο της επεξεργασίας συλλόγου (όνομα, λογότυπο, αθλητές)
+  removedDefaults: [],
+  athletesMode: null,
+  regionSel: null,      // δείκτης περιφέρειας της λίστας συμμετοχών που φορτώθηκε (Περιφερειακοί)
+  regionMsg: "",
+  regionOrder: {},      // σειρά αθλητών ανά περιφέρεια και σύλλογο
+  athleteMemo: {},      // χορηγοί αθλητών που έφυγαν με αλλαγή περιφέρειας
+  showPick: false,      // Πανελλήνιο: πλαίσιο επιλογής από τη λίστα συμμετοχών
+  pickQuery: "",
+  panRedCarry: false,
+  drawAbsentees: null,  // απόντες πριν την κλήρωση, στιγμιότυπο της στιγμής της κλήρωσης (null = παλιός αγώνας χωρίς λίστα)   // Πανελλήνιο: κόκκινη σε αγωνιστική = αποκλεισμός και από τις επόμενες (μέχρι απόφαση Δ.Σ.)   // ο τύπος αγώνα στον οποίο ανήκει τώρα το c.athletes κάθε συλλόγου  // βασικοί σύλλογοι που διαγράφηκαν οριστικά (να μην ξαναμπαίνουν στην εκκίνηση)      // πρόχειρο της επεξεργασίας συλλόγου (όνομα, λογότυπο, αθλητές)
   rosterLoaded: false,
   quota: { slots: 35, minRaces: 3, manual: {}, locked: {} },
   seriesQuota: null,
@@ -374,9 +435,42 @@ function upsertLibrary(name, logo){
   storageSet(LIBRARY_KEY, JSON.stringify(state.library));
 }
 
+/* ---------- χωριστή λίστα αθλητών ανά τύπο αγώνα ---------- */
+// Σύλλογοι και λογότυπα κοινά· οι αθλητές κάθε τύπου (Φιλικοί / Περιφερειακοί /
+// Πανελλήνιο) στο c.athletesByMode[mode]. Το c.athletes είναι πάντα η λίστα
+// του τρέχοντος τύπου (state.athletesMode).
+var ATHLETE_MODES = ["friendly", "regional", "panhellenic"];
+function stashAthletes(){
+  var m = state.athletesMode;
+  if (!m) return;
+  state.clubs.forEach(function(c){
+    c.athletesByMode = c.athletesByMode || {};
+    c.athletesByMode[m] = c.athletes || [];
+  });
+}
+function syncAthletes(mode){
+  if (!MODES[mode]) return;
+  stashAthletes();
+  state.clubs.forEach(function(c){
+    c.athletesByMode = c.athletesByMode || {};
+    if (!c.athletesByMode[mode]) c.athletesByMode[mode] = [];
+    c.athletes = c.athletesByMode[mode];
+  });
+  state.athletesMode = mode;
+}
+// Παλιά αποθήκευση (μία κοινή λίστα): κάθε τύπος παίρνει βαθύ αντίγραφο, ίδια id.
+function migrateAthletesByMode(c){
+  if (c.athletesByMode && typeof c.athletesByMode === "object") return c;
+  var base = c.athletes || [];
+  c.athletesByMode = {};
+  ATHLETE_MODES.forEach(function(m){ c.athletesByMode[m] = JSON.parse(JSON.stringify(base)); });
+  return c;
+}
+
 function setMode(mode){
   if (!MODES[mode]) return;
   state.mode = mode;
+  syncAthletes(mode);
   if (mode === "panhellenic") state.numSectors = 5;
   storageSet(MODE_KEY, JSON.stringify(mode));
   state.error = "";
@@ -396,6 +490,7 @@ function goHome(){
   state.teamStandings = [];
   state.rounds = null;
   state.roundAbsent = {};
+  state.cards = {};
   state.saveNameInput = "";
   state.saveRegionInput = "";
   state.error = "";
@@ -504,7 +599,7 @@ function arrangeSeatsNoAdjacentSameClub(members){
 /* ---------- Πανελλήνιο: 3 αγωνιστικές ---------- */
 // The working copy (state.flatAssignments, weights, …) is always the round
 // on screen; switching rounds writes it back into state.rounds first.
-var ROUND_FIELDS = ["flatAssignments", "sectorCapacities", "weights", "rankings", "teamRankings", "roundAbsent", "counts"];
+var ROUND_FIELDS = ["flatAssignments", "sectorCapacities", "weights", "rankings", "teamRankings", "roundAbsent", "counts", "cards"];
 function isChampionship(){ return state.mode === "panhellenic" && state.rounds && state.rounds.length > 0; }
 function syncRoundOut(){
   if (!isChampionship()) return;
@@ -516,6 +611,7 @@ function applyRound(i){
   var r = state.rounds[i];
   ROUND_FIELDS.forEach(function(f){ state[f] = r[f]; });
   if (!state.roundAbsent) state.roundAbsent = {};
+  if (!state.cards) state.cards = {};
   if (!state.weights) state.weights = {};
   ensureCounts();
   state.revealedCount = state.flatAssignments.length;
@@ -528,17 +624,131 @@ function goRound(i){
   state.stage = "result";
   render();
 }
-// Cycles the athlete's status in this race: — → ΑΠΩΝ → ΑΠΟΚΛ. → —
+function setPanRedCarry(on){ state.panRedCarry = !!on; storageSet(PAN_RED_KEY, JSON.stringify(state.panRedCarry)); render(); }
+// Οι αγωνιστικές ως λίστα (στο πρωτάθλημα όλες, αλλιώς μόνο ο τρέχων αγώνας)
+// και ο δείκτης της τρέχουσας.
+function roundObjs(){
+  if (isChampionship()){ syncRoundOut(); return { list: state.rounds, cur: state.currentRound }; }
+  return { list: [{ roundAbsent: state.roundAbsent = state.roundAbsent || {}, cards: state.cards = state.cards || {} }], cur: 0 };
+}
+function rCards(r){ return r.cards = r.cards || {}; }
+function rAbs(r){ return r.roundAbsent = r.roundAbsent || {}; }
+function invalidateRound(r){ r.rankings = null; r.teamRankings = null; }
+// Ρύθμιση ανοιχτή: η ΚΟΚΚΙΝΗ της αγωνιστικής n μπαίνει και στις επόμενες
+// (εκτός αν εκεί υπάρχει ήδη άλλη κατάσταση), με carry = n.
+function carryRedFrom(R, n, id){
+  if (!state.panRedCarry || R.list.length < 2) return;
+  for (var j = n + 1; j < R.list.length; j++){
+    var r = R.list[j], ab = rAbs(r);
+    if (ab[id]) continue;
+    ab[id] = "red";
+    var c = rCards(r)[id] = rCards(r)[id] || { y: 0, note: "" };
+    c.carry = n + 1;
+    if (!c.note){ c.note = "Κόκκινη στην " + (n + 1) + "η αγωνιστική"; c.carryNote = true; }
+    invalidateRound(r);
+  }
+}
+// Αναίρεση: φεύγει από τις επόμενες όσες ήρθαν από την αγωνιστική n.
+function uncarryRedFrom(R, n, id){
+  for (var j = n + 1; j < R.list.length; j++){
+    var r = R.list[j], c = rCards(r)[id];
+    if (!c || c.carry !== n + 1) continue;
+    if (rAbs(r)[id] === "red") delete r.roundAbsent[id];
+    delete c.carry;
+    if (c.carryNote){ c.note = ""; delete c.carryNote; }
+    if (!c.y && !c.note) delete r.cards[id];
+    invalidateRound(r);
+  }
+}
+function setRedAt(R, i, id, auto){
+  var r = R.list[i];
+  rAbs(r)[id] = "red";
+  var c = rCards(r)[id] = rCards(r)[id] || { y: 0, note: "" };
+  if (auto) c.auto = true;
+  invalidateRound(r);
+  carryRedFrom(R, i, id);
+}
+function clearRedAt(R, i, id){
+  var r = R.list[i];
+  if (rAbs(r)[id] === "red") delete r.roundAbsent[id];
+  var c = rCards(r)[id];
+  if (c){ delete c.auto; if (!c.y && !c.note) delete r.cards[id]; }
+  invalidateRound(r);
+  uncarryRedFrom(R, i, id);
+}
+// Κίτρινες: μετράνε σε όλο το πρωτάθλημα· η αγωνιστική όπου συμπληρώνεται η
+// 2η κίτρινη παίρνει αυτόματα ΚΟΚΚΙΝΗ (άρθρο 73).
+function recomputeYellowReds(R, id){
+  var run = 0, k = -1;
+  R.list.forEach(function(r, i){
+    var c = rCards(r)[id], y = c ? (c.y || 0) : 0;
+    run += y;
+    if (k < 0 && y > 0 && run >= 2) k = i;
+  });
+  R.list.forEach(function(r, i){
+    var c = rCards(r)[id];
+    if (i === k){
+      if (!rAbs(r)[id]) setRedAt(R, i, id, true);
+    } else if (c && c.auto){
+      clearRedAt(R, i, id);
+    }
+  });
+}
+function yellowsBefore(R, id){
+  var n = 0;
+  for (var i = 0; i < R.cur; i++){ var c = rCards(R.list[i])[id]; n += c ? (c.y || 0) : 0; }
+  return n;
+}
+// Cycles the athlete's status in this race: — → ΑΠΩΝ → ΚΟΚΚΙΝΗ → ΕΓΚΑΤ. → —
 function toggleRoundAbsent(athleteId){
-  if (!state.roundAbsent) state.roundAbsent = {};
-  var v = state.roundAbsent[athleteId];
-  if (!v) state.roundAbsent[athleteId] = "abs";
-  else if (v === "dq") delete state.roundAbsent[athleteId];
-  else state.roundAbsent[athleteId] = "dq";
+  var R = roundObjs(), r = R.list[R.cur], ab = rAbs(r);
+  var v = ab[athleteId] || "";
+  var wasRed = v === "red" || v === "dq";
+  if (v === "dq") v = "red";
+  var next = STATUS_CYCLE[(STATUS_CYCLE.indexOf(v) + 1) % STATUS_CYCLE.length];
+  if (wasRed && next !== "red"){
+    clearRedAt(R, R.cur, athleteId);
+    var c = rCards(r)[athleteId];
+    if (c && c.y >= 2) c.y = 1;
+  }
+  if (next === "red") setRedAt(R, R.cur, athleteId, false);
+  else if (next) ab[athleteId] = next;
+  else delete ab[athleteId];
+  if (isChampionship()) applyRound(R.cur);
   state.rankings = null;
   state.teamRankings = null;
   persistWorking();
   render();
+}
+// Κίτρινη κάρτα (άρθρο 73): πάτημα 0 → 🟨 → 🟨🟨 → 0 στην αγωνιστική· αν
+// υπάρχει ήδη κίτρινη σε προηγούμενη αγωνιστική, 0 → 🟨 → 0.
+function toggleYellow(athleteId){
+  var R = roundObjs(), r = R.list[R.cur];
+  var c = rCards(r)[athleteId] = rCards(r)[athleteId] || { y: 0, note: "" };
+  var max = yellowsBefore(R, athleteId) >= 1 ? 1 : 2;
+  c.y = (c.y || 0) >= max ? 0 : (c.y || 0) + 1;
+  recomputeYellowReds(R, athleteId);
+  if (!c.y && !c.note && !c.auto && !c.carry) delete r.cards[athleteId];
+  if (isChampionship()) applyRound(R.cur);
+  state.rankings = null;
+  state.teamRankings = null;
+  persistWorking();
+  render();
+}
+function setCardNote(athleteId, v){
+  state.cards = state.cards || {};
+  var c = state.cards[athleteId] = state.cards[athleteId] || { y: 0, note: "" };
+  c.note = String(v || "").trim();
+  if (!c.y && !c.note) delete state.cards[athleteId];
+  persistWorking();
+}
+// Κείμενο κάρτας/κατάστασης για PDF & Excel: «🟨 · ΚΟΚΚΙΝΗ — αιτιολογία».
+function cardText(id, st){
+  var y = yellowOf(id), parts = [];
+  if (y) parts.push(y >= 2 ? "2 κίτρινες" : "κίτρινη");
+  if (st) parts.push(statusLabel(st));
+  var n = cardNote(id);
+  return parts.join(" · ") + (n ? (parts.length ? " — " : "") + n : "");
 }
 
 var PERM_CACHE = {};
@@ -616,7 +826,7 @@ function sectorOffsetsOf(caps){
 
 // Ημερήσια ατομική (άρθρο 43): lower penalty, then more points, more fish,
 // longer fish; all equal → same place, next place skipped.
-function individualRows(flat, caps, weights, rankings, excludeTeamOnly, absent){
+function individualRows(flat, caps, weights, rankings, excludeTeamOnly, absent, statusFirst){
   absent = absent || {};
   var offs = sectorOffsetsOf(caps);
   function cOf(a){ return absent[a.athleteId] ? parseCatch("") : parseCatch(weights[a.athleteId]); }
@@ -641,7 +851,9 @@ function individualRows(flat, caps, weights, rankings, excludeTeamOnly, absent){
   for (var i = 0; i < rows.length; ){
     var j = i;
     while (j + 1 < rows.length && rows[j+1].place === rows[i].place) j++;
-    if (j > i && rows[i].weight === 0){
+    // Μέσος όρος (άρθρο 44) μόνο για παρόντες χωρίς αλίευμα· απόντες, κόκκινες
+    // και εγκαταλείψεις με ίδιο Β/Π παίρνουν όλοι την πρώτη θέση της ομάδας.
+    if (j > i && rows[i].weight === 0 && !(statusFirst && rows[i].roundAbsent)){
       var sum = 0;
       for (var k = i; k <= j; k++) sum += k + 1;
       var avg = Math.ceil(sum / (j - i + 1));
@@ -708,7 +920,7 @@ function openChampionship(){
     if (!roundHasResults(r)){ dailyInd.push(null); dailyTeam.push(null); return; }
     counted++;
     var rk = panRankRound(r.flatAssignments, r.sectorCapacities, r.weights || {}, r.roundAbsent);
-    var ir = {}; individualRows(r.flatAssignments, r.sectorCapacities, r.weights || {}, rk.ind, true, r.roundAbsent).forEach(function(x){ ir[x.athleteId] = x; });
+    var ir = {}; individualRows(r.flatAssignments, r.sectorCapacities, r.weights || {}, rk.ind, true, r.roundAbsent, true).forEach(function(x){ ir[x.athleteId] = x; });
     var tr = {}; teamRows(r.flatAssignments, r.sectorCapacities, r.weights || {}, rk.team, state.teams, r.roundAbsent).forEach(function(x){ tr[x.clubId] = x; });
     dailyInd.push(ir); dailyTeam.push(tr);
   });
@@ -782,8 +994,8 @@ function computeSeriesRows(races){
     var caps = d.sectorCapacities, w = d.weights || {}, ab = d.roundAbsent || {};
     var rk = regionalRankRound(d.flatAssignments, caps, w, ab);
     var rows = individualRows(d.flatAssignments, caps, w, rk, false, ab);
-    var scores = rows.map(function(r){ return r.score || 0; });
-    var absentScore = (scores.length ? Math.max.apply(null, scores) : 0) + 1;
+    // Όποιος έλειψε από αγώνα: μέγεθος του μεγαλύτερου τομέα του αγώνα +1 (άρθρο 33).
+    var absentScore = (caps && caps.length ? Math.max.apply(null, caps) : rows.length) + 1;
     var byKey = {};
     rows.forEach(function(r){
       var k = seriesKey(r.athleteName);
@@ -837,7 +1049,7 @@ function openSeriesRanking(){
   // έχουν την ίδια, την παίρνει· αλλιώς μένει χωρίς (και χωρίς πρόκριση).
   var keys = {}, regName = "";
   races.forEach(function(d){ var r = String(d.region || "").trim(); if (r){ if (!regName) regName = r; keys[regionKey(r)] = true; } });
-  state.seriesRegion = Object.keys(keys).length === 1 ? regName : "";
+  state.seriesRegion = Object.keys(keys).length === 1 ? regionDisplay(regName) : "";
   var qrow = state.seriesRegion ? quotaRegions().rows.find(function(x){ return x.key === regionKey(state.seriesRegion); }) : null;
   state.seriesSeats = qrow ? qrow.seats : 0;
   state.seriesQuota = quotaState();
@@ -1029,7 +1241,7 @@ function buildRacePrint(){
       var c = parseCatch(state.weights[a.athleteId]);
       h += '<tr><td class="c">'+sectorLabel(sIdx)+a.position+'</td>'+seatTd(a)+seatClubTd(a);
       if (hasW){
-        if (st) h += '<td class="c" colspan="3">'+statusLabel(st)+'</td>';
+        if (st) h += '<td class="c" colspan="3">'+statusLabel(st)+(yellowOf(a.athleteId) ? ' 🟨' : '')+'</td>';
         else h += '<td class="c">'+c.fish+'</td><td class="c">'+c.cm+'</td><td class="c">'+(isSumPair(a) ? '<span style="white-space:nowrap;">'+pairBreakdown(a)+'</span>' : c.pts)+'</td>';
         h += '<td class="c">'+(state.rankings[a.athleteId] || '')+'</td>';
       }
@@ -1060,6 +1272,13 @@ function buildRacePrint(){
       h += '</table></div>';
     }
   }
+  var carded = state.flatAssignments.slice().sort(function(a,b){ return a.position - b.position; })
+    .filter(function(a){ return (state.roundAbsent && state.roundAbsent[a.athleteId]) || yellowOf(a.athleteId) || cardNote(a.athleteId); });
+  if (carded.length){
+    h += '<div class="blk"><h2>Κάρτες – αποκλεισμοί – απόντες</h2><table><tr><th class="c">Θέση</th><th>Αθλητής</th><th>Κατάσταση / αιτιολογία</th></tr>';
+    carded.forEach(function(a){ h += '<tr><td class="c">'+sectorLabel(a.sector)+a.position+'</td><td>'+esc(a.athleteName)+'</td><td>'+esc(cardText(a.athleteId, state.roundAbsent && state.roundAbsent[a.athleteId]))+'</td></tr>'; });
+    h += '</table></div>';
+  }
   var corr = state.flatAssignments.slice().sort(function(a,b){ return a.position - b.position; })
     .map(function(a){ return { a: a, t: correctionsText(a.athleteId) }; }).filter(function(x){ return x.t; });
   var nCounts = (state.counts || []).filter(function(c){ return c.sector >= 0; }).length;
@@ -1081,6 +1300,23 @@ function buildRacePrint(){
   return { html: h + printSignature() + printFooter(), file: "Agonas_" + title };
 }
 
+function championshipCardsTable(){
+  var rows = [];
+  (state.rounds || []).forEach(function(r, i){
+    var ab = r.roundAbsent || {}, cs = r.cards || {};
+    r.flatAssignments.slice().sort(function(a, b){ return a.position - b.position; }).forEach(function(a){
+      var c = cs[a.athleteId];
+      if (!ab[a.athleteId] && !(c && (c.y || c.note))) return;
+      var y = c ? (c.y || 0) : 0, parts = [];
+      if (y) parts.push(y >= 2 ? "2 κίτρινες" : "κίτρινη");
+      if (ab[a.athleteId]) parts.push(statusLabel(ab[a.athleteId]));
+      var note = c && c.note ? c.note : "";
+      rows.push('<tr><td class="c">'+(i+1)+'η</td><td class="c">'+sectorLabel(a.sector)+a.position+'</td><td>'+esc(a.athleteName)+'</td><td>'+esc(a.clubName || '')+'</td><td>'+esc(parts.join(" · ") + (note ? (parts.length ? " — " : "") + note : ""))+'</td></tr>');
+    });
+  });
+  if (!rows.length) return "";
+  return '<div class="blk"><h2>Αποκλεισμοί / κάρτες</h2><table><tr><th class="c">Αγων.</th><th class="c">Θέση</th><th>Αθλητής</th><th>Σύλλογος</th><th>Κατάσταση / αιτιολογία</th></tr>' + rows.join('') + '</table></div>';
+}
 function buildChampionshipPrint(){
   var title = (state.saveNameInput || "").trim() || "Πανελλήνιο Πρωτάθλημα";
   var n = state.rounds.length;
@@ -1103,6 +1339,7 @@ function buildChampionshipPrint(){
     h += '<td class="c"><b>'+t.totalPlaces+'</b></td><td class="n">'+t.totalWeight+'</td><td class="c">'+t.totalFish+'</td></tr>';
   });
   h += '</table></div>';
+  h += championshipCardsTable();
   return { html: h + printSignature() + printFooter(), file: "Protathlima_" + title };
 }
 
@@ -1221,11 +1458,16 @@ function importRaceCsvText(text, fileName){
   function col(name){ return H.indexOf(normalizeClubName(name)); }
   var cPos = col("ΘΕΣΗ"), cName = col("ΟΝΟΜΑ ΑΘΛΗΤΗ"), cClub = col("ΣΥΛΛΟΓΟΣ"), cSp = col("ΧΟΡΗΓΟΣ"), cW = col("ΜΗΚΗ ΑΛΙΕΥΜΑΤΩΝ"), cSt = col("ΚΑΤΑΣΤΑΣΗ");
   if (cPos < 0 || cName < 0 || cClub < 0) throw new Error("δεν είναι Φύλλο Αγώνα της εφαρμογής (λείπουν οι στήλες ΘΕΣΗ / ΟΝΟΜΑ ΑΘΛΗΤΗ / ΣΥΛΛΟΓΟΣ)");
-  var flat = [], weights = {}, statuses = {}, seenPos = {}, maxSector = -1, clubCache = {};
+  var flat = [], weights = {}, statuses = {}, seenPos = {}, maxSector = -1, clubCache = {}, absentees = [];
   rows.slice(1).forEach(function(r, idx){
     var posRaw = String(r[cPos] || "").trim();
     var name = String(r[cName] || "").trim();
     if (!posRaw || !name) return;
+    // Απών πριν την κλήρωση: δεν μπαίνει σε τομέα.
+    if (normalizeClubName(posRaw) === "απων"){
+      absentees.push({ name: name, clubName: String(r[cClub] || "").trim(), sponsor: cSp >= 0 ? String(r[cSp] || "").trim() : "" });
+      return;
+    }
     var m = posRaw.match(/^([^\d\s]+)\s*(\d+)$/);
     if (!m) throw new Error("γραμμή " + (idx+2) + ": άκυρη θέση «" + posRaw + "»");
     var sector = sectorIndexFromLetters(m[1]);
@@ -1248,8 +1490,10 @@ function importRaceCsvText(text, fileName){
     flat.push(entry);
     weights[entry.athleteId] = cW >= 0 ? String(r[cW] || "").trim() : "";
     var stRaw = cSt >= 0 ? normalizeClubName(String(r[cSt] || "")) : "";
-    if (stRaw.indexOf("αποκλ") === 0) statuses[entry.athleteId] = "dq";
-    else if (stRaw.indexOf("απων") === 0) statuses[entry.athleteId] = "abs";
+    if (stRaw.indexOf("κοκκιν") !== -1 || stRaw.indexOf("2 κιτριν") !== -1) statuses[entry.athleteId] = "red";
+    else if (stRaw.indexOf("εγκατ") !== -1) statuses[entry.athleteId] = "ret";
+    else if (stRaw.indexOf("αποκλ") !== -1) statuses[entry.athleteId] = "dq";
+    else if (stRaw.indexOf("απων") !== -1) statuses[entry.athleteId] = "abs";
   });
   if (!flat.length) throw new Error("δεν βρέθηκαν αθλητές");
   var caps = [];
@@ -1269,7 +1513,7 @@ function importRaceCsvText(text, fileName){
     numSectors: caps.length, flatAssignments: flat.sort(function(a,b){ return a.position - b.position; }),
     sectorCapacities: caps, weights: weights,
     rankings: hasWeights ? regionalRankRound(flat, caps, weights, statuses) : null, teamRankings: null,
-    roundAbsent: statuses, rounds: null, currentRound: 0, absentAthletes: []
+    roundAbsent: statuses, rounds: null, currentRound: 0, absentAthletes: absentees
   };
   state.savedDraws.push(draw);
   storageSet(SAVED_DRAWS_KEY, JSON.stringify(state.savedDraws));
@@ -1350,7 +1594,7 @@ function removeAthlete(clubId, athleteId){
   confirmOrRun("athlete-"+athleteId, function(){
     var c = findClub(clubId);
     if (c) c.athletes = c.athletes.filter(function(a){ return a.id !== athleteId; });
-    dropFromPairs([athleteId]);
+    if (state.mode === "friendly") dropFromPairs([athleteId]);
     if (state.editClub && state.editClub.athletes) delete state.editClub.athletes[athleteId];
   });
 }
@@ -1372,6 +1616,195 @@ function setClubLogoUrl(clubId, url){
   upsertLibrary(c.name, url);
   persistRoster();
   render();
+}
+
+/* ---------- λίστα συμμετοχών, περιφέρεια, σειρά αθλητών ---------- */
+function entriesOfRegion(i){ return ENTRIES.filter(function(e){ return e[3] === i; }); }
+function entryKey(e){ return e[2] ? "r:" + String(e[2]).trim() : "n:" + seriesKey(e[1]); }
+function athKey(a){ return a.reg ? "r:" + String(a.reg).trim() : "n:" + seriesKey(a.name); }
+function athMatchesEntry(a, e){ return (e[2] && a.reg && String(a.reg).trim() === String(e[2]).trim()) || seriesKey(a.name) === seriesKey(e[1]); }
+function clubKeyOf(c){ return normalizeClubName(c.name); }
+function findOrCreateClub(name){
+  var k = normalizeClubName(name);
+  var c = state.clubs.find(function(x){ return normalizeClubName(x.name) === k || normalizeClubName(x.defaultName || "") === k; });
+  if (c) return c;
+  var lib = state.library.find(function(l){ return normalizeClubName(l.name) === k; });
+  c = { id: uid(), name: String(name).trim(), color: CLUB_COLORS[state.clubs.length % CLUB_COLORS.length], logo: (lib && lib.logo) || DEFAULT_LOGOS[name] || null, athletes: [], athletesByMode: {} };
+  if (state.athletesMode) c.athletesByMode[state.athletesMode] = c.athletes;
+  state.clubs.push(c);
+  var rd = state.removedDefaults.filter(function(n){ return normalizeClubName(n) !== k; });
+  if (rd.length !== state.removedDefaults.length){ state.removedDefaults = rd; storageSet(REMOVED_DEFAULTS_KEY, JSON.stringify(rd)); }
+  return c;
+}
+function rememberSponsors(list){
+  list.forEach(function(a){
+    if (!a.sponsor) return;
+    state.athleteMemo["n:" + seriesKey(a.name)] = a.sponsor;
+    if (a.reg) state.athleteMemo["r:" + String(a.reg).trim()] = a.sponsor;
+  });
+  storageSet(ATHLETE_MEMO_KEY, JSON.stringify(state.athleteMemo));
+}
+function memoSponsor(e){ return state.athleteMemo[entryKey(e)] || state.athleteMemo["n:" + seriesKey(e[1])] || ""; }
+function saveRegionOrder(club){
+  if (state.regionSel === null || state.regionSel === undefined || state.mode !== "regional") return;
+  var rk = "@" + state.regionSel;
+  state.regionOrder[rk] = state.regionOrder[rk] || {};
+  state.regionOrder[rk][clubKeyOf(club)] = club.athletes.map(athKey);
+  storageSet(REGION_ORDER_KEY, JSON.stringify(state.regionOrder));
+}
+function selectRegion(val){
+  if (val === "" || val === null){ state.regionSel = null; state.regionMsg = ""; storageSet(REGION_SEL_KEY, JSON.stringify(null)); render(); return; }
+  loadRegion(parseInt(val, 10));
+}
+// Φόρτωση περιφέρειας (Περιφερειακοί): μένουν ΜΟΝΟ οι αθλητές της λίστας της
+// περιφέρειας. Όποιος υπάρχει ήδη (αρ. μητρώου ή όνομα) κρατά id, χορηγό,
+// κατηγορία και σειρά· οι υπόλοιποι φεύγουν και ο χορηγός τους θυμάται.
+function loadRegion(i){
+  if (!(i >= 0 && i < REGIONS.length)) return;
+  if (state.mode !== "regional") return;
+  var list = entriesOfRegion(i);
+  state.clubs.forEach(function(c){ rememberSponsors(c.athletes); });
+  var byClub = {}, clubsUsed = {};
+  list.forEach(function(e){
+    var c = findOrCreateClub(e[0]);
+    (byClub[c.id] = byClub[c.id] || []).push(e);
+    clubsUsed[c.id] = true;
+  });
+  var order = state.regionOrder["@" + i] || {};
+  state.clubs.forEach(function(c){
+    var ents = byClub[c.id] || [];
+    var old = c.athletes || [];
+    var kept = [], fresh = [];
+    ents.forEach(function(e){
+      var ex = old.find(function(a){ return athMatchesEntry(a, e); });
+      var a = ex || { id: uid(), name: e[1] };
+      if (e[2]) a.reg = String(e[2]).trim();
+      if (!a.sponsor){ var sp = memoSponsor(e); if (sp) a.sponsor = sp; }
+      (ex ? kept : fresh).push({ a: a, oldIdx: ex ? old.indexOf(ex) : 0 });
+    });
+    kept.sort(function(x, y){ return x.oldIdx - y.oldIdx; });
+    var next = kept.concat(fresh).map(function(x){ return x.a; });
+    var ord = order[clubKeyOf(c)];
+    if (ord && ord.length){
+      var pos = {};
+      ord.forEach(function(k, j){ pos[k] = j; });
+      next = next.map(function(a, j){ return { a: a, j: j }; }).sort(function(x, y){
+        var px = pos[athKey(x.a)], py = pos[athKey(y.a)];
+        if (px === undefined && py === undefined) return x.j - y.j;
+        if (px === undefined) return 1;
+        if (py === undefined) return -1;
+        return px - py;
+      }).map(function(x){ return x.a; });
+    }
+    c.athletes = next;
+    if (ents.length) saveRegionOrderFor(i, c);
+  });
+  state.regionSel = i;
+  storageSet(REGION_SEL_KEY, JSON.stringify(i));
+  state.regionMsg = "✓ " + REGIONS[i] + ": " + list.length + " αθλητές από " + Object.keys(clubsUsed).length + " συλλόγους";
+  if (!String(state.saveRegionInput || "").trim()) state.saveRegionInput = REGIONS[i];
+  persistRoster();
+  render();
+}
+function saveRegionOrderFor(i, c){
+  var rk = "@" + i;
+  state.regionOrder[rk] = state.regionOrder[rk] || {};
+  state.regionOrder[rk][clubKeyOf(c)] = c.athletes.map(athKey);
+  storageSet(REGION_ORDER_KEY, JSON.stringify(state.regionOrder));
+}
+// Κουτί αρίθμησης: ο αθλητής πάει στη θέση που γράφτηκε (εκτός ορίων →
+// πρώτος/τελευταίος) και οι άλλοι μετατοπίζονται.
+function moveAthleteTo(clubId, athleteId, raw){
+  var c = findClub(clubId);
+  if (!c) return;
+  var from = c.athletes.findIndex(function(a){ return a.id === athleteId; });
+  if (from < 0) return;
+  var n = parseInt(String(raw).replace(/[^0-9-]/g, ""), 10);
+  if (isNaN(n)){ render(); return; }
+  var to = Math.max(1, Math.min(c.athletes.length, n)) - 1;
+  var a = c.athletes.splice(from, 1)[0];
+  c.athletes.splice(to, 0, a);
+  saveRegionOrder(c);
+  persistRoster();
+  render();
+}
+function renderRegionBox(){
+  if (state.mode !== "regional" || !ENTRIES.length) return "";
+  var sel = state.regionSel;
+  var h = '<div style="background:#fff; border:1px solid #E4DFCF; border-left:4px solid '+GOLD+'; border-radius:5px; padding:10px 12px; margin-bottom:18px;">';
+  h += '<div style="font-weight:bold; color:'+NAVY+'; font-size:14px; margin-bottom:6px;">📍 Περιφέρεια</div>';
+  h += '<select class="input" style="width:100%; box-sizing:border-box;" onchange="selectRegion(this.value)"><option value="">— διάλεξε περιφέρεια —</option>' +
+    REGIONS.map(function(n, i){ return '<option value="'+i+'"'+(sel === i ? ' selected' : '')+'>'+esc(n)+' ('+entriesOfRegion(i).length+')</option>'; }).join('') + '</select>';
+  h += '<div style="font-size:11.5px; color:#8A93A0; margin-top:6px;">'+esc(ENTRIES_TITLE)+' · '+ENTRIES.length+' αθλητές'+(ENTRIES_DEADLINE ? ' · υποβολή έως '+esc(ENTRIES_DEADLINE) : '')+'</div>';
+  if (state.regionMsg) h += '<div style="font-size:12.5px; color:#2E6B3E; margin-top:6px; font-weight:bold;">'+esc(state.regionMsg)+'</div>';
+  return h + '</div>';
+}
+// Πανελλήνιο: επιλογή αθλητών από τη λίστα συμμετοχών.
+function pickSelected(e){
+  var k = normalizeClubName(e[0]);
+  var c = state.clubs.find(function(x){ return normalizeClubName(x.name) === k || normalizeClubName(x.defaultName || "") === k; });
+  if (!c) return null;
+  var a = c.athletes.find(function(x){ return athMatchesEntry(x, e); });
+  return a ? { club: c, athlete: a } : null;
+}
+function togglePick(idx){
+  var e = ENTRIES[idx];
+  if (!e || state.mode !== "panhellenic") return;
+  var hit = pickSelected(e);
+  if (hit){
+    hit.club.athletes = hit.club.athletes.filter(function(a){ return a !== hit.athlete; });
+  } else {
+    var c = findOrCreateClub(e[0]);
+    var a = { id: uid(), name: e[1] };
+    if (e[2]) a.reg = String(e[2]).trim();
+    var sp = memoSponsor(e);
+    if (sp) a.sponsor = sp;
+    c.athletes.push(a);
+  }
+  persistRoster();
+  render();
+}
+function filterPick(q){
+  state.pickQuery = q;
+  var k = normalizeClubName(q);
+  var rows = document.querySelectorAll("[data-pick]");
+  Array.prototype.forEach.call(rows, function(r){ r.style.display = !k || r.getAttribute("data-pick").indexOf(k) !== -1 ? "" : "none"; });
+}
+function renderPickPanel(){
+  if (state.mode !== "panhellenic" || !ENTRIES.length) return "";
+  var h = '<div style="margin:0 0 16px;"><button class="btn-secondary" style="width:100%;" onclick="state.showPick=!state.showPick; render();">📋 Επιλογή από τη λίστα συμμετοχών ('+ENTRIES.length+')</button></div>';
+  if (!state.showPick) return h;
+  var Q = quotaRegions();
+  var seatsOf = {};
+  Q.rows.forEach(function(r){ seatsOf[r.key] = r.seats; });
+  var nInd = 0, nTeam = 0, perRegion = {};
+  ENTRIES.forEach(function(e){
+    var hit = pickSelected(e);
+    if (!hit) return;
+    if (hit.athlete.participation === "team"){ nTeam++; return; }
+    nInd++;
+    perRegion[e[3]] = (perRegion[e[3]] || 0) + 1;
+  });
+  h += '<div style="background:#fff; border:1px solid #E4DFCF; border-radius:5px; padding:10px 12px; margin:-6px 0 16px;">';
+  h += '<div style="font-size:13px; color:'+NAVY+'; margin-bottom:8px;">Επιλεγμένοι: <b>'+nInd+'</b> ατομικά'+(nTeam ? ' (+'+nTeam+' μόνο ομαδικά)' : '')+' · θέσεις τελικού <b>'+(state.quota.slots || 0)+'</b></div>';
+  h += '<input type="search" class="input" style="width:100%; box-sizing:border-box; margin-bottom:8px;" placeholder="Αναζήτηση: όνομα, σύλλογος ή αρ. μητρώου" value="'+esc(state.pickQuery)+'" oninput="filterPick(this.value)" />';
+  REGIONS.forEach(function(rn, i){
+    var ents = ENTRIES.map(function(e, idx){ return { e: e, idx: idx }; }).filter(function(x){ return x.e[3] === i; });
+    if (!ents.length) return;
+    var x = perRegion[i] || 0, seats = seatsOf["@" + i] || 0;
+    var col = x === seats ? QUOTA_GREEN : x < seats ? QUOTA_ORANGE : "#A33";
+    h += '<div style="display:flex; align-items:center; justify-content:space-between; font-weight:bold; color:'+NAVY+'; font-size:13px; margin:10px 0 4px; padding-bottom:3px; border-bottom:1px solid #E4DFCF;">' +
+      '<span>'+esc(rn)+'</span><span style="color:'+col+';">'+x+' / '+seats+'</span></div>';
+    ents.forEach(function(it){
+      var e = it.e, on = !!pickSelected(e);
+      var key = normalizeClubName(e[1] + " " + e[0] + " " + (e[2] || ""));
+      h += '<label data-pick="'+esc(key)+'" style="display:flex; align-items:center; gap:8px; padding:4px 0; font-size:13px; cursor:pointer;">' +
+        '<input type="checkbox" '+(on ? 'checked' : '')+' onchange="togglePick('+it.idx+')" style="width:17px; height:17px; flex-shrink:0;" />' +
+        '<span style="min-width:0;">'+esc(e[1])+(e[2] ? ' <span style="color:#8A93A0; font-size:11px;">'+esc(e[2])+'</span>' : '')+' <span style="color:#8A93A0; font-size:11px;">· '+esc(e[0])+'</span></span></label>';
+    });
+  });
+  h += '</div>';
+  return h;
 }
 
 /* ---------- επεξεργασία συλλόγου και αθλητών ---------- */
@@ -1427,6 +1860,11 @@ function saveEditClub(){
   });
   // Οι προεπιλεγμένοι σύλλογοι ξαναμπαίνουν στην εκκίνηση αν λείπει το όνομά
   // τους· κρατάμε το αρχικό όνομα ώστε να μη διπλασιαστούν μετά τη μετονομασία.
+  stashAthletes();
+  ATHLETE_MODES.forEach(function(m){
+    if (m === state.athletesMode || !c.athletesByMode || !c.athletesByMode[m]) return;
+    c.athletesByMode[m].forEach(function(a){ if (renames[a.id]) a.name = renames[a.id].name; });
+  });
   if (name !== oldName && !c.defaultName && isDefaultClubName(oldName)) c.defaultName = oldName;
   c.name = name;
   c.logo = E.logo || null;
@@ -1669,6 +2107,7 @@ function importManualDraw(){
 
   state.numSectors = nonEmptySectors.length;
   state.sectorCapacities = capacities;
+  state.drawAbsentees = snapshotAbsentees();
   state.flatAssignments = flat;
   state.revealedCount = flat.length;
   state.weights = {};
@@ -1680,6 +2119,7 @@ function importManualDraw(){
   if (state.mode === "panhellenic") tagPanFlags(flat, state.teams);
   state.rounds = null;
   state.roundAbsent = {};
+  state.cards = {};
   state.teamRankings = null;
   state.teamStandings = [];
   state.stage = "result";
@@ -1694,6 +2134,7 @@ function runDraw(){
   if (!canDraw()) return;
   if (state.mode === "friendly") return runFriendlyDraw();
   if (state.mode === "panhellenic") return runPanhellenicDraw();
+  if (state.regionSel !== null && state.regionSel !== undefined && ENTRIES.length && !String(state.saveRegionInput || "").trim()) state.saveRegionInput = REGIONS[state.regionSel];
 
   var total = totalAthletes();
   var fixedSize = parseInt(state.fixedSectorSizeText, 10);
@@ -2071,7 +2512,7 @@ function runPanhellenicDraw(){
       });
       running += members.length;
     });
-    return { flatAssignments: shuffle(flat), sectorCapacities: caps, weights: {}, rankings: null, teamRankings: null, roundAbsent: {}, counts: [] };
+    return { flatAssignments: shuffle(flat), sectorCapacities: caps, weights: {}, rankings: null, teamRankings: null, roundAbsent: {}, counts: [], cards: {} };
   });
   var teams = buildTeams(rounds[0].flatAssignments);
   rounds.forEach(function(r){ tagPanFlags(r.flatAssignments, teams); });
@@ -2080,8 +2521,17 @@ function runPanhellenicDraw(){
   startReveal(rounds[0].flatAssignments, rounds[0].sectorCapacities);
 }
 
+// Απόντες πριν την κλήρωση: στιγμιότυπο τη στιγμή της κλήρωσης, ώστε να μη
+// χάνονται (ή να αλλάζουν) σε αποθηκευμένο αγώνα, Excel ή εισαγωγή CSV.
+function snapshotAbsentees(){
+  if (state.mode === "panhellenic") return [];
+  return [].concat.apply([], modeClubs().map(function(c){
+    return c.athletes.filter(function(a){ return a.absent; }).map(function(a){ return { name: a.name, clubName: c.name, sponsor: a.sponsor || "" }; });
+  }));
+}
 function startReveal(flat, capacities){
   if (state.mode !== "panhellenic") state.rounds = null;
+  state.drawAbsentees = snapshotAbsentees();
   state.sectorCapacities = capacities;
   state.flatAssignments = flat;
   state.revealedCount = 0;
@@ -2090,6 +2540,7 @@ function startReveal(flat, capacities){
   state.countDraft = null;
   state.currentDrawId = null;
   state.roundAbsent = isChampionship() ? state.rounds[state.currentRound].roundAbsent : {};
+  state.cards = isChampionship() ? (state.rounds[state.currentRound].cards = state.rounds[state.currentRound].cards || {}) : {};
   state.rankings = null;
   state.teams = state.mode === "panhellenic" ? buildTeams(flat) : [];
   if (state.mode === "panhellenic") tagPanFlags(flat, state.teams);
@@ -2113,7 +2564,9 @@ function startReveal(flat, capacities){
 function newDrawSameClubs(){
   clearWorking();
   state.rounds = null;
+  state.drawAbsentees = null;
   state.roundAbsent = {};
+  state.cards = {};
   state.stage = "setup";
   state.flatAssignments = [];
   state.revealedCount = 0;
@@ -2126,6 +2579,7 @@ function resetAll(){
     state.clubs.forEach(function(c){ c.athletes = []; });
     state.rounds = null;
     state.roundAbsent = {};
+  state.cards = {};
     state.flatAssignments = [];
     state.revealedCount = 0;
     state.weights = {};
@@ -2306,6 +2760,7 @@ function clearWorking(){ storageSet(CURRENT_KEY, JSON.stringify(null)); state.cu
 function restoreWorking(snap){
   if (!snap || !snap.flatAssignments || !snap.flatAssignments.length || !MODES[snap.mode]) return false;
   state.mode = snap.mode;
+  syncAthletes(snap.mode);
   state.numSectors = snap.numSectors;
   state.flatAssignments = snap.flatAssignments;
   state.sectorCapacities = snap.sectorCapacities;
@@ -2316,6 +2771,8 @@ function restoreWorking(snap){
   state.teamRankings = snap.teamRankings || null;
   state.teams = snap.teams || [];
   state.roundAbsent = snap.roundAbsent || {};
+  state.cards = snap.cards || {};
+  state.drawAbsentees = Array.isArray(snap.absentAthletes) ? snap.absentAthletes : null;
   state.rounds = snap.rounds && snap.rounds.length ? snap.rounds : null;
   state.saveNameInput = snap.name || "";
   state.saveRegionInput = snap.region || "";
@@ -2355,7 +2812,9 @@ function regionalRankRound(flat, caps, weights, absent){
   function present(a){ return !absent[a.athleteId]; }
   function inSector(sectorIdx){ return flat.filter(function(a){ return a.sector === sectorIdx; }); }
   function toWeighted(list){ return list.map(function(a){ return { athleteId: a.athleteId, weight: parseWeight(weights[a.athleteId]) }; }); }
-  function giveAbsent(list, size){ list.filter(function(a){ return !present(a); }).forEach(function(a){ result[a.athleteId] = size + 1; }); }
+  // ΑΠΩΝ / ΚΟΚΚΙΝΗ / ΕΓΚΑΤ.: μέγεθος του μεγαλύτερου τομέα +1 (Φιλικοί: του τομέα τους +1).
+  var largest = caps.length ? Math.max.apply(null, caps) : 0;
+  function giveAbsent(list, size){ var sz = state.mode === "friendly" ? size : Math.max(size, largest); list.filter(function(a){ return !present(a); }).forEach(function(a){ result[a.athleteId] = sz + 1; }); }
 
   for (var s=0; s<numSectors; s++){
     if (isTechnical && s === lastIdx) continue;
@@ -2393,30 +2852,47 @@ function openFinalRanking(){
   state.stage = "finalRanking";
   render();
 }
+// Οι απόντες πριν την κλήρωση του αγώνα: από το στιγμιότυπο της κλήρωσης·
+// μόνο αγώνες χωρίς καθόλου λίστα (πολύ παλιοί) παίρνουν το τρέχον ρόστερ.
+function absenteeRows(){
+  if (state.mode === "panhellenic") return [];
+  var list = Array.isArray(state.drawAbsentees) ? state.drawAbsentees : snapshotAbsentees();
+  return list.map(function(x){
+    var k = normalizeClubName(x.clubName || ""), c = state.clubs.find(function(cl){ return normalizeClubName(cl.name) === k; });
+    var a = c && c.athletes.find(function(at){ return seriesKey(at.name) === seriesKey(x.name); });
+    return { athleteId: (a && a.id) || ("abs_" + seriesKey(x.name) + "_" + k), athleteName: x.name, sponsor: x.sponsor || (a && a.sponsor) || "",
+      clubName: x.clubName || "", color: c ? c.color : "#8A93A0", logo: c ? c.logo : null };
+  });
+}
 function computeFinalStandings(){
   var rankings = state.rankings, weights = state.weights;
   var excludeTeamOnly = state.mode === "panhellenic";
   var individualPool = state.flatAssignments.filter(function(a){ return !(excludeTeamOnly && a.inIndividual === false); });
-  var withPlace = individualRows(state.flatAssignments, state.sectorCapacities, weights, rankings, excludeTeamOnly, state.roundAbsent);
+  var withPlace = individualRows(state.flatAssignments, state.sectorCapacities, weights, rankings, excludeTeamOnly, state.roundAbsent, state.mode !== "friendly");
 
   // Athletes marked "Απών" never entered the draw, so they carry no
   // sector/position — appended here, all sharing one score: the worst
   // real score in the competition, plus one.
   var allScores = individualPool.map(function(a){ return rankings[a.athleteId] || 0; });
   var maxScore = allScores.length > 0 ? Math.max.apply(null, allScores) : 0;
-  var absentScore = maxScore + 1;
+  // Περιφερειακοί (άρθρο 33): όσοι δηλώθηκαν «Απών» πριν την κλήρωση παίρνουν
+  // το μέγεθος του μεγαλύτερου τομέα +1.
+  var absentScore = state.mode !== "friendly" && state.sectorCapacities.length
+    ? Math.max.apply(null, state.sectorCapacities) + 1 : maxScore + 1;
+  // Ίδιος Β/Π με απόντες/κόκκινες/εγκαταλείψεις της κλήρωσης → ίδια (πρώτη)
+  // θέση της ομάδας τους· αλλιώς μετά από όλους.
   var absentPlace = withPlace.length + 1;
+  if (state.mode !== "friendly"){
+    var same = withPlace.find(function(r){ return r.roundAbsent && r.score === absentScore; });
+    if (same) absentPlace = same.place;
+  }
   // Πανελλήνιο: athletes marked absent before the draw are simply not
   // taking part; absences on the day are marked per round instead.
-  if (state.mode !== "panhellenic") modeClubs().forEach(function(c){
-    c.athletes.filter(function(a){ return a.absent; }).forEach(function(a){
-      withPlace.push({
-        athleteId: a.id, athleteName: a.name, sponsor: a.sponsor || "",
-        clubName: c.name, color: c.color, logo: c.logo,
-        sector: null, position: null, localPosition: null,
-        score: absentScore, weight: 0, place: absentPlace
-      });
-    });
+  absenteeRows().forEach(function(a){
+    withPlace.push(Object.assign(a, {
+      sector: null, position: null, localPosition: null,
+      score: absentScore, weight: 0, fish: 0, cm: 0, place: absentPlace, status: "absent"
+    }));
   });
 
   return withPlace;
@@ -2476,7 +2952,7 @@ function exportToExcel(){
       (sectorLetters[a.sector] || (a.sector+1)) + a.position,
       a.athleteName, a.clubName, a.sponsor || "",
       st ? "" : c.lengths.join(" "), st ? "" : c.fish, st ? "" : c.cm, st ? "" : c.pts, st ? "" : (c.longest || ""),
-      st ? statusLabel(st) : "",
+      cardText(a.athleteId, st),
       score,
       countsText(a.athleteId),
       correctionsText(a.athleteId)
@@ -2486,6 +2962,16 @@ function exportToExcel(){
       ? pairParts(a).map(function(x){ return x.name + ": " + x.c.fish + " ψ., " + x.c.cm + " εκ., " + x.c.pts + " β."; }).join(" | ") + " | Σύνολο: " + pairBreakdown(a) : "");
     return row;
   });
+  // Απόντες πριν την κλήρωση: μία γραμμή ο καθένας, ΘΕΣΗ = «ΑΠΩΝ».
+  if (!isChampionship() && state.mode !== "panhellenic"){
+    var absScore = state.rankings ? (computeFinalStandings().filter(function(x){ return x.status === "absent"; })[0] || {}).score : "";
+    absenteeRows().forEach(function(a){
+      var row = [csvRows.length + 1, "ΑΠΩΝ", a.athleteName, a.clubName, a.sponsor || "", "ΑΠΩΝ", "", "", "", "", "ΑΠΩΝ", absScore == null ? "" : absScore, "", ""];
+      if (isPan) row.push("");
+      if (anyPair) row.push("");
+      csvRows.push(row);
+    });
+  }
   var today = new Date().toISOString().slice(0,10);
   var nm = (state.saveNameInput || "").trim().replace(/[^\w\u0370-\u03FF\u1F00-\u1FFF]+/g, "_").replace(/^_+|_+$/g, "");
   downloadCsv("Fyllo_Agona_" + (nm ? nm + "_" : "") + (isChampionship() ? (state.currentRound+1) + "i_Agonistiki_" : "") + today + ".csv", header, csvRows);
@@ -2526,14 +3012,12 @@ function snapshotDraw(id, name, savedAt){
     numSectors: state.numSectors, flatAssignments: state.flatAssignments,
     sectorCapacities: state.sectorCapacities, weights: state.weights, counts: state.counts || [],
     rankings: state.rankings, teamRankings: state.teamRankings,
-    roundAbsent: state.roundAbsent || {}, rounds: isChampionship() ? state.rounds : null, currentRound: state.currentRound,
+    roundAbsent: state.roundAbsent || {}, cards: state.cards || {}, rounds: isChampionship() ? state.rounds : null, currentRound: state.currentRound,
     // Αντίγραφο: οι αλλαγές στα στοιχεία του τρέχοντος αγώνα δεν πρέπει να
     // περνούν στους ήδη αποθηκευμένους (π.χ. χορηγοί στη συγκεντρωτική).
     raceInfo: JSON.parse(JSON.stringify(state.raceInfo || blankRaceInfo())),
     region: state.mode === "regional" ? String(state.saveRegionInput || "").replace(/\s+/g, " ").trim() : "",
-    absentAthletes: state.mode === "panhellenic" ? [] : [].concat.apply([], modeClubs().map(function(c){
-      return c.athletes.filter(function(a){ return a.absent; }).map(function(a){ return { name: a.name, clubName: c.name }; });
-    }))
+    absentAthletes: state.mode === "panhellenic" ? [] : (Array.isArray(state.drawAbsentees) ? state.drawAbsentees : snapshotAbsentees())
   };
 }
 function saveCurrentDraw(){
@@ -2560,6 +3044,8 @@ function saveCurrentDraw(){
 function loadSavedDraw(id){
   var draw = state.savedDraws.find(function(d){ return d.id === id; });
   if (!draw) return;
+  if (drawModeOf(draw) !== state.mode){ state.mode = drawModeOf(draw); storageSet(MODE_KEY, JSON.stringify(state.mode)); }
+  syncAthletes(state.mode);
   state.numSectors = draw.numSectors;
   state.flatAssignments = draw.flatAssignments;
   state.sectorCapacities = draw.sectorCapacities;
@@ -2576,6 +3062,8 @@ function loadSavedDraw(id){
   if (drawModeOf(draw) === "panhellenic" && draw.flatAssignments.length && draw.flatAssignments[0].inIndividual === undefined) tagPanFlags(draw.flatAssignments, state.teams);
   state.teamStandings = [];
   state.roundAbsent = draw.roundAbsent || {};
+  state.cards = draw.cards || {};
+  state.drawAbsentees = Array.isArray(draw.absentAthletes) ? draw.absentAthletes : null;
   state.rounds = draw.rounds && draw.rounds.length ? draw.rounds : null;
   if (state.rounds) applyRound(Math.min(draw.currentRound || 0, state.rounds.length - 1));
   else ensureCounts();
@@ -2592,11 +3080,19 @@ function deleteSavedDraw(id){
 }
 
 function goManage(){ state.editClub = null; state.stage = "manage"; render(); }
-function goSetup(){ state.stage = "setup"; render(); }
+function goSetup(){ state.stage = "setup"; render(); window.scrollTo(0, 0); }
+// Επιστροφή στην κλήρωση που υπάρχει στη μνήμη (βάρη/μήκη δεν χάνονται).
+function backToDraw(){
+  if (!state.flatAssignments || !state.flatAssignments.length) return;
+  state.revealedCount = state.flatAssignments.length;
+  state.stage = "result";
+  render();
+  window.scrollTo(0, 0);
+}
 function goSavedDraws(){ state.stage = "savedDraws"; state.importMsg = ""; render(); }
 function savedDrawsForMode(mode){ return state.savedDraws.filter(function(d){ return drawModeOf(d) === mode; }); }
 
-function persistRoster(){ storageSet(ROSTER_KEY, JSON.stringify(state.clubs)); }
+function persistRoster(){ stashAthletes(); storageSet(ROSTER_KEY, JSON.stringify(state.clubs)); }
 
 /* ---------- rendering ---------- */
 function render(){
@@ -2661,6 +3157,7 @@ function openSavedFromHome(id){
   var d = state.savedDraws.find(function(x){ return x.id === id; });
   if (!d) return;
   state.mode = drawModeOf(d);
+  syncAthletes(state.mode);
   if (state.mode === "panhellenic") state.numSectors = 5;
   storageSet(MODE_KEY, JSON.stringify(state.mode));
   loadSavedDraw(id);
@@ -2717,6 +3214,14 @@ function renderSetup(){
   var unaddedLibrary = state.library.filter(function(l){ return !state.clubs.some(function(c){ return c.name === l.name; }); });
 
   var html = "";
+  if (state.flatAssignments && state.flatAssignments.length){
+    var dn = (state.saveNameInput || "").trim();
+    html += '<div style="background:#FBF6E8; border:1px solid #E8D9A8; border-left:4px solid '+GOLD+'; border-radius:5px; padding:10px 12px; margin-bottom:16px; font-size:12.5px; color:#5A4A1E; line-height:1.5;">' +
+      'Υπάρχει κλήρωση σε εξέλιξη' + (dn ? ' («' + esc(dn) + '»)' : '') + '. Νέα κλήρωση θα την αντικαταστήσει.' +
+      '<div style="margin-top:8px;"><button class="btn-primary-sm" style="padding:8px 14px;" onclick="backToDraw()">↩ Επιστροφή στην κλήρωση</button></div></div>';
+  }
+  html += renderRegionBox();
+  html += renderPickPanel();
   html += '<div style="margin-bottom:20px;"><div class="section-title">Μαζική εισαγωγή</div>';
   html += '<div style="font-size:12.5px; color:#8A93A0; margin-bottom:6px;">Επικόλλησε <code>Όνομα, Σύλλογος[, Χορηγός]</code> ανά γραμμή — ή γράψε τον σύλλογο μόνο του από πάνω (π.χ. "ΔΕΛΦΙΝΙΑ (11)") και μετά ένα όνομα ανά γραμμή, προαιρετικά με "– Χορηγός" στο τέλος</div>';
   html += '<textarea id="bulkText" rows="5" class="input" style="width:100%; resize:vertical; margin-bottom:8px; font-family:monospace; font-size:12.5px;" placeholder=""></textarea>';
@@ -2727,6 +3232,9 @@ function renderSetup(){
   html += '<input id="numSectorsInput" type="text" inputmode="numeric" class="input" style="max-width:100px;" value="'+esc(state.numSectors)+'" onblur="commitNumSectorsAndRender()" />';
   if (state.mode === "friendly") html += renderPairsCard();
   if (isPan){
+    html += '<label style="display:flex; align-items:flex-start; gap:8px; margin-top:12px; font-size:13px; color:'+INK+'; cursor:pointer; line-height:1.4;">' +
+      '<input type="checkbox" '+(state.panRedCarry ? 'checked' : '')+' onchange="setPanRedCarry(this.checked)" style="width:17px; height:17px; margin:1px 0 0; flex-shrink:0;" />' +
+      '<span>🟥 Κόκκινη σε αγωνιστική = αποκλεισμός και από τις επόμενες<br><span style="font-size:11.5px; color:#8A93A0;">Κλειστό: συνεχίζει κανονικά στην επόμενη αγωνιστική (μέχρι απόφαση Δ.Σ.)</span></span></label>';
     var pc = panCounts();
     var pcaps = computeCapacities(pc.individual, state.numSectors);
     var ptech = pcaps.length > 1 && pcaps[pcaps.length-1] !== pcaps[0];
@@ -2775,6 +3283,8 @@ function renderSetup(){
       'Πάτα <b>Α+Ο</b> για να γίνει <b>Α</b> (μόνο ατομικά) ένας αθλητής που δεν θέλεις στην ομάδα. Μετράνε οι 4 καλύτεροι· ομάδα 4 μετράει και τους 4.</div>';
   }
 
+  var ordered = isPan || state.mode === "regional";
+  if (ordered) html += '<div style="font-size:12px; color:#5A6472; margin-bottom:10px;">Η σειρά μετράει στην κλήρωση· γράψε αριθμό στο κουτί για να αλλάξεις θέση.</div>';
   clubs.forEach(function(club){
     if (state.editClub && state.editClub.id === club.id){ html += renderEditClubCard(club); return; }
     var teamIds = isPan ? teamMemberIdsForClub(club) : [];
@@ -2806,13 +3316,17 @@ function renderSetup(){
 
     if (club.athletes.length > 0){
       html += '<div>';
-      club.athletes.forEach(function(a){
+      club.athletes.forEach(function(a, ai){
         var armed = state.pendingDelete === "athlete-"+a.id;
         var editing = state.editingSponsorFor === a.id;
         var inTeam = isPan && teamIds.indexOf(a.id) !== -1;
-        html += '<span class="chip'+(armed?" chip-armed":"")+(inTeam && !armed?" chip-team":"")+'">';
+        if (ordered) html += '<div style="display:flex; align-items:center; gap:6px; margin-bottom:5px;">' +
+          '<input type="text" inputmode="numeric" value="'+(ai+1)+'" title="Θέση στη σειρά" onfocus="this.select()" onchange="moveAthleteTo('+jsStr(club.id)+', '+jsStr(a.id)+', this.value)" onkeydown="if(event.key===\'Enter\'){this.blur();}" ' +
+          'style="width:34px; flex-shrink:0; border:1px solid #CFC7B0; border-radius:4px; padding:5px 2px; font-size:13px; text-align:center; font-weight:bold; color:'+NAVY+';" />';
+        html += '<span class="chip'+(armed?" chip-armed":"")+(inTeam && !armed?" chip-team":"")+'"'+(ordered ? ' style="margin:0;"' : '')+'>';
         if (inTeam) html += '<span style="color:#B8862F; margin-right:3px;">★</span>';
         html += '<span'+(a.absent?' style="text-decoration:line-through; opacity:0.5;"':'')+'>'+esc(a.name)+'</span>';
+        if (a.reg) html += '<span style="color:#8A93A0; font-size:10.5px; margin-left:4px;">'+esc(a.reg)+'</span>';
         if (editing){
           html += '<input id="sponsorEdit-'+a.id+'" type="text" value="'+esc(a.sponsor || "")+'" placeholder="Χορηγός" ' +
             'onblur="updateAthleteSponsor('+jsStr(club.id)+', '+jsStr(a.id)+', this.value.trim())" ' +
@@ -2833,6 +3347,7 @@ function renderSetup(){
         if (armed) html += '<span style="margin-left:6px; cursor:pointer; font-weight:bold;" onclick="removeAthlete('+jsStr(club.id)+', '+jsStr(a.id)+')">Σίγουρα;</span>';
         else html += '<span style="margin-left:5px; cursor:pointer;" onclick="removeAthlete('+jsStr(club.id)+', '+jsStr(a.id)+')">✕</span>';
         html += '</span>';
+        if (ordered) html += '</div>';
       });
       html += '</div>';
     }
@@ -2967,7 +3482,8 @@ function renderSavedDraws(){
 }
 
 function renderFinalRanking(){
-  var html = '<div style="text-align:center; margin-bottom:16px;">';
+  var html = backBar('← Κλήρωση', "state.stage=\'result\'; render();");
+  html += '<div style="text-align:center; margin-bottom:16px;">';
   html += '<div style="font-family:Georgia,serif; font-size:20px; color:'+NAVY+';">'+(state.mode==="panhellenic"?"Ατομική Κατάταξη":"Τελική Κατάταξη")+'</div>';
   html += '<div style="font-size:11.5px; color:#8A93A0; margin-top:2px;">Ισοβαθμία: βαθμοί, μετά ψάρια, μετά μεγαλύτερο ψάρι</div>';
   if (state.saveNameInput && state.saveNameInput.trim()){
@@ -2998,13 +3514,14 @@ function renderFinalRanking(){
   html += '<div style="display:flex; gap:10px; justify-content:center; margin-top:18px; flex-wrap:wrap;">';
   html += '<button class="btn-gold" onclick="exportFinalRankingToExcel()">📊 Export σε Excel</button>';
   html += '<button class="btn-gold" onclick="printPdf(\'race\')">📄 PDF</button>';
-  html += '<button class="btn-secondary" onclick="state.stage=\'result\'; render();">← Πίσω</button>';
+  html += '<button class="btn-secondary" onclick="state.stage=\'result\'; render();">← Κλήρωση</button>';
   html += '</div>';
   return html;
 }
 
 function renderTeamRanking(){
-  var html = '<div style="text-align:center; margin-bottom:16px;">';
+  var html = backBar('← Κλήρωση', "state.stage=\'result\'; render();");
+  html += '<div style="text-align:center; margin-bottom:16px;">';
   html += '<div style="font-family:Georgia,serif; font-size:20px; color:'+NAVY+';">Ομαδική Κατάταξη</div>';
   if (state.saveNameInput && state.saveNameInput.trim()){
     html += '<div style="font-size:13px; color:#B8862F; font-style:italic; margin-top:2px;">'+esc(state.saveNameInput.trim())+'</div>';
@@ -3044,7 +3561,7 @@ function renderTeamRanking(){
   html += '<div style="display:flex; gap:10px; justify-content:center; margin-top:18px; flex-wrap:wrap;">';
   html += '<button class="btn-gold" onclick="exportTeamRankingToExcel()">📊 Export σε Excel</button>';
   html += '<button class="btn-gold" onclick="printPdf(\'race\')">📄 PDF</button>';
-  html += '<button class="btn-secondary" onclick="state.stage=\'result\'; render();">← Πίσω</button>';
+  html += '<button class="btn-secondary" onclick="state.stage=\'result\'; render();">← Κλήρωση</button>';
   html += '</div>';
   return html;
 }
@@ -3068,7 +3585,16 @@ function raceCell(label, x){
 // Έγκυρη συμμετοχή: ελάχιστοι αγώνες (προεπιλογή 3 από τους 4, άρθρο 3.1).
 // Κοινό για την κατανομή θέσεων και τη συγκεντρωτική.
 function minRaces(){ var n = parseInt(state.quota && state.quota.minRaces, 10); return n >= 1 ? n : 3; }
-function regionKey(s){ return normalizeClubName(String(s || "")); }
+function regionIndexOf(s){
+  var k = normalizeClubName(String(s || ""));
+  for (var i = 0; i < REGION_ROOTS.length; i++){
+    if (k.indexOf(REGION_ROOTS[i]) !== -1) return i;
+    if ((REGION_ROOTS_EXTRA[i] || []).some(function(r){ return k.indexOf(r) !== -1; })) return i;
+  }
+  return -1;
+}
+function regionKey(s){ var i = regionIndexOf(s); return i >= 0 ? "@" + i : normalizeClubName(String(s || "")); }
+function regionDisplay(s){ var i = regionIndexOf(s); return i >= 0 ? REGIONS[i] : String(s || "").trim(); }
 function persistQuota(){ storageSet(QUOTA_KEY, JSON.stringify(state.quota)); }
 function setQuotaNum(field, val){
   var n = parseInt(String(val).replace(/[^0-9]/g, ""), 10);
@@ -3121,7 +3647,7 @@ function setRegionValid(key, name, hasRaces, val){
   var old = manualKeyOf(key);
   if (old !== undefined) delete m[old];
   if (v !== "") m[old !== undefined ? old : name] = v;
-  else if (!hasRaces) m[old !== undefined ? old : name] = "0";
+  else if (!hasRaces && key.charAt(0) !== "@") m[old !== undefined ? old : name] = "0";
   persistQuota(); render();
 }
 function addManualRegion(){
@@ -3149,10 +3675,12 @@ function regionCore(key){
   return key.replace(/περιφερεια(ς)?/g, " ").split(" ").filter(Boolean).map(function(w){ return w.replace(/(ς|σ)$/, ""); }).join(" ");
 }
 function regionLookalike(row, rows){
+  if (row.key.charAt(0) === "@") return null;
   var c = regionCore(row.key);
   if (c.length < 4) return null;
   return rows.find(function(o){
     if (o.key === row.key) return false;
+    if (o.key.charAt(0) === "@") return false;
     var d = regionCore(o.key);
     return d.length >= 4 && (c === d || c.indexOf(d) === 0 || d.indexOf(c) === 0);
   }) || null;
@@ -3167,24 +3695,31 @@ function quotaRegions(){
     var r = String(d.region || "").trim();
     if (drawModeOf(d) !== "regional" || !r) return;
     var k = regionKey(r);
-    if (!groups[k]){ groups[k] = { key: k, name: r, races: [] }; order.push(k); }
+    if (!groups[k]){ groups[k] = { key: k, name: regionDisplay(r), races: [] }; order.push(k); }
     groups[k].races.push(d);
   });
+  REGIONS.forEach(function(n, i){ var k = "@" + i; if (!groups[k]){ groups[k] = { key: k, name: n, races: [] }; order.push(k); } });
   var min = minRaces(), manual = state.quota.manual || {};
   var rows = order.map(function(k){
     var g = groups[k];
     var races = g.races.slice().sort(function(a, b){ return String(a.savedAt).localeCompare(String(b.savedAt)); });
     var thr = Math.min(min, races.length);
-    var auto = computeSeriesRows(races).filter(function(r){ return r.category === "M" && r.raced >= thr; }).length;
+    var auto = races.length ? computeSeriesRows(races).filter(function(r){ return r.category === "M" && r.raced >= thr; }).length : 0;
     var mk = manualKeyOf(k), mv = mk !== undefined ? String(manual[mk]) : "";
     var lk = lockOf(k);
-    return { key: k, name: g.name, nRaces: races.length, auto: auto, manualVal: mv, valid: lk ? (parseInt(lk.valid, 10) || 0) : mv !== "" ? parseInt(mv, 10) || 0 : auto, hasRaces: true, locked: lk };
+    var ri = k.charAt(0) === "@" ? parseInt(k.slice(1), 10) : -1;
+    var listN = ri >= 0 ? entriesOfRegion(ri).length : 0;
+    var def = listN > 0 ? listN : auto;
+    return { key: k, name: g.name, nRaces: races.length, auto: auto, listN: listN, def: def, manualVal: mv,
+      valid: lk ? (parseInt(lk.valid, 10) || 0) : mv !== "" ? parseInt(mv, 10) || 0 : def,
+      src: lk ? "lock" : mv !== "" ? "manual" : listN > 0 ? "list" : "auto",
+      hasRaces: races.length > 0, fixed: ri >= 0, locked: lk };
   });
   Object.keys(manual).forEach(function(n){
     var k = regionKey(n);
     if (!k || groups[k]) return;
     var lk = lockOf(k);
-    rows.push({ key: k, name: n, nRaces: 0, auto: 0, manualVal: String(manual[n]), valid: lk ? (parseInt(lk.valid, 10) || 0) : parseInt(manual[n], 10) || 0, hasRaces: false, locked: lk });
+    rows.push({ key: k, name: n, nRaces: 0, auto: 0, listN: 0, def: 0, manualVal: String(manual[n]), valid: lk ? (parseInt(lk.valid, 10) || 0) : parseInt(manual[n], 10) || 0, src: lk ? "lock" : "manual", hasRaces: false, fixed: false, locked: lk });
   });
   rows.sort(function(a, b){ return a.name.localeCompare(b.name, "el", { sensitivity: "base" }); });
   var alloc = allocateQuota(rows, state.quota.slots || 0);
@@ -3195,6 +3730,7 @@ function quotaRegions(){
 function knownRegions(){
   var seen = {}, out = [];
   function add(n){ n = String(n || "").trim(); var k = regionKey(n); if (k && !seen[k]){ seen[k] = true; out.push(n); } }
+  REGIONS.forEach(add);
   state.savedDraws.forEach(function(d){ if (drawModeOf(d) === "regional") add(d.region); });
   Object.keys(state.quota.manual || {}).forEach(add);
   return out.sort(function(a, b){ return a.localeCompare(b, "el", { sensitivity: "base" }); });
@@ -3275,7 +3811,7 @@ function renderQuota(){
     var lc = r.locked ? QUOTA_GREEN : QUOTA_ORANGE;
     html += '<div style="display:flex; align-items:center; gap:8px; padding:9px 12px; border-top:1px solid #F0EBDD; border-left:4px solid '+lc+'; background:'+(r.locked ? '#F1F8F3' : '#FDF6F0')+';">';
     html += '<div style="flex:1; min-width:0;"><div style="font-weight:bold; color:'+NAVY+'; font-size:14px;">'+esc(r.name)+'</div>';
-    html += '<div style="font-size:11px; color:#8A93A0;">'+(r.hasRaces ? r.nRaces+' '+(r.nRaces === 1 ? 'αγώνας' : 'αγώνες')+' στην εφαρμογή · αυτόματα '+r.auto+' έγκυροι' : 'χωρίς αγώνες στην εφαρμογή')+'</div>';
+    html += '<div style="font-size:11px; color:#8A93A0;">'+(r.listN ? '📋 '+r.listN+' στη λίστα συμμετοχών · ' : '')+(r.hasRaces ? r.nRaces+' '+(r.nRaces === 1 ? 'αγώνας' : 'αγώνες')+' στην εφαρμογή · αυτόματα '+r.auto+' έγκυροι' : 'χωρίς αγώνες στην εφαρμογή')+'</div>';
     if (look) html += '<div style="font-size:11px; color:#A33; margin-top:2px;">⚠ Μοιάζει με «'+esc(look.name)+'» — μήπως είναι η ίδια περιφέρεια δύο φορές;</div>';
     html += '<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:4px;">';
     if (r.locked){
@@ -3287,10 +3823,10 @@ function renderQuota(){
     }
     html += '</div></div>';
     if (r.locked) html += '<div style="width:70px; text-align:center; font-size:17px; font-weight:bold; color:'+QUOTA_GREEN+';" title="Κλειδωμένος αριθμός έγκυρων">'+r.valid+'</div>';
-    else html += '<input type="text" inputmode="numeric" value="'+esc(r.manualVal)+'" placeholder="'+(r.hasRaces ? r.auto : 0)+'" onchange="setRegionValid('+jsStr(r.key)+', '+jsStr(r.name)+', '+(r.hasRaces?'true':'false')+', this.value)" style="'+inp+' width:70px; text-align:center;" />';
+    else html += '<input type="text" inputmode="numeric" value="'+esc(r.manualVal)+'" placeholder="'+r.def+'" onchange="setRegionValid('+jsStr(r.key)+', '+jsStr(r.name)+', '+(r.hasRaces?'true':'false')+', this.value)" style="'+inp+' width:70px; text-align:center;" />';
     html += '<div style="width:54px; text-align:center;"><div style="font-size:19px; font-weight:bold; color:'+NAVY+'; line-height:1.1;">'+(Q.total ? r.seats : '—')+'</div>' +
       (Q.total ? '<div style="font-size:10.5px; color:#8A93A0;">'+r.exact.toFixed(2).replace(".", ",")+(r.extra ? ' ↑' : '')+'</div>' : '') + '</div>';
-    html += '<div style="width:20px; text-align:center;">'+(r.hasRaces || r.locked ? '' : '<span style="cursor:pointer; color:#A33; font-size:16px;" onclick="removeManualRegion('+jsStr(r.key)+')" title="Αφαίρεση">✕</span>')+'</div>';
+    html += '<div style="width:20px; text-align:center;">'+(r.hasRaces || r.locked || r.fixed ? '' : '<span style="cursor:pointer; color:#A33; font-size:16px;" onclick="removeManualRegion('+jsStr(r.key)+')" title="Αφαίρεση">✕</span>')+'</div>';
     html += '</div>';
   });
   var sumSeats = Q.rows.reduce(function(s, r){ return s + r.seats; }, 0);
@@ -3300,14 +3836,16 @@ function renderQuota(){
     '<button class="btn-primary-sm" style="font-size:20px; padding:0 14px;" onclick="addManualRegion()">＋</button></div>';
   if (state.quotaMsg) html += '<div style="font-size:12px; color:#A33; margin-top:6px;">'+esc(state.quotaMsg)+'</div>';
   html += '<div style="font-size:11.5px; color:#8A93A0; margin-top:12px; line-height:1.55;">Κάθε περιφέρεια παίρνει θέσεις ανάλογα με τους έγκυρους αθλητές της: θέσεις τελικού × έγκυροι περιφέρειας ÷ σύνολο έγκυρων. Κρατιέται το ακέραιο μέρος και οι θέσεις που περισσεύουν πάνε στα μεγαλύτερα υπόλοιπα (↑), ώστε το σύνολο να είναι πάντα '+(q.slots||0)+'. ' +
-    'Έγκυροι = Άνδρες με τουλάχιστον '+minRaces()+' αγώνες (ο αποκλεισμός/εγκατάλειψη μετράει ως αγώνας, ο απών όχι)· Γυναίκες και Νέοι δεν μετράνε. Οι έγκυροι βγαίνουν αυτόματα από όλους τους αποθηκευμένους αγώνες κάθε περιφέρειας· γράψε αριθμό για να τον αντικαταστήσεις, σβήσε τον για να επιστρέψει ο αυτόματος.</div>';
+    'Έγκυροι: κλειδωμένος αριθμός → χειροκίνητος → συμμετοχές της λίστας (📋) → αυτόματα από τους αγώνες. ' +
+    'Αυτόματα = Άνδρες με τουλάχιστον '+minRaces()+' αγώνες (ο αποκλεισμός/εγκατάλειψη μετράει ως αγώνας, ο απών όχι)· Γυναίκες και Νέοι δεν μετράνε. Οι έγκυροι βγαίνουν αυτόματα από όλους τους αποθηκευμένους αγώνες κάθε περιφέρειας· γράψε αριθμό για να τον αντικαταστήσεις, σβήσε τον για να επιστρέψει ο αυτόματος.</div>';
   html += '<div style="margin-top:12px;">'+quotaNoteHtml(quotaState(Q), '12px')+'</div>';
   return html;
 }
 
 function renderSeries(){
   var n = state.seriesRaces.length;
-  var html = '<div style="text-align:center; margin-bottom:12px;">';
+  var html = backBar('← Αποθηκευμένες', 'goSavedDraws()');
+  html += '<div style="text-align:center; margin-bottom:12px;">';
   html += '<div style="font-family:Georgia,serif; font-size:20px; color:'+NAVY+';">Συγκεντρωτική Κατάταξη</div>';
   var Q = seriesQualify();
   if (state.seriesRegion) html += '<div style="font-size:13.5px; color:#B8862F; margin-top:2px;">📍 '+esc(state.seriesRegion)+'</div>';
@@ -3354,7 +3892,8 @@ function renderSeries(){
 
 function renderChampionship(){
   var n = state.rounds.length;
-  var html = '<div style="text-align:center; margin-bottom:14px;">';
+  var html = backBar('← Αγωνιστικές', "state.stage=\'result\'; render();");
+  html += '<div style="text-align:center; margin-bottom:14px;">';
   html += '<div style="font-family:Georgia,serif; font-size:20px; color:'+NAVY+';">Κατάταξη Πρωταθλήματος</div>';
   if (state.saveNameInput && state.saveNameInput.trim()) html += '<div style="font-size:13px; color:#B8862F; font-style:italic; margin-top:2px;">'+esc(state.saveNameInput.trim())+'</div>';
   html += '<div style="font-size:11.5px; color:#8A93A0; margin-top:4px;">'+(state.champRoundsCounted < n ? 'Μετά από '+state.champRoundsCounted+' από '+n+' αγωνιστικές' : 'Και οι '+n+' αγωνιστικές')+' · χωρίς αφαίρεση αγωνιστικής</div>';
@@ -3558,8 +4097,12 @@ function renderCountView(){
   return html;
 }
 
+function backBar(label, onclick){
+  return '<div style="margin:-4px 0 12px;"><button class="btn-link" onclick="'+onclick+'">'+label+'</button></div>';
+}
 function renderDraw(){
-  var html = '<div style="text-align:center; font-size:13px; color:#5A6472; margin-bottom:16px;">';
+  var html = state.stage === "result" ? backBar('← Σύλλογοι', 'goSetup()') : '';
+  html += '<div style="text-align:center; font-size:13px; color:#5A6472; margin-bottom:16px;">';
   html += state.stage === "drawing"
     ? "Κληρώνονται οι αθλητές… (" + state.revealedCount + "/" + state.flatAssignments.length + ")"
     : "Η κλήρωση ολοκληρώθηκε.";
@@ -3633,10 +4176,15 @@ function renderDraw(){
         if (state.rankings && state.rankings[slot.athleteId]){
           html += '<span title="Βαθμός ποινής τομέα" style="background:'+GOLD+';color:'+NAVY+';border-radius:10px;padding:1px 7px;font-size:11px;font-weight:bold;">'+state.rankings[slot.athleteId]+'ος</span>';
         }
-        html += '<button class="abs-btn'+(st?' on':'')+'" onclick="toggleRoundAbsent('+jsStr(slot.athleteId)+')" title="Κατάσταση: απών → αποκλεισμός/εγκατάλειψη → κανονικά">'+(st ? statusLabel(st) : 'Απ/Αποκλ')+'</button>';
+        var yy = yellowOf(slot.athleteId);
+        html += '<button class="abs-btn" onclick="toggleYellow('+jsStr(slot.athleteId)+')" title="Κίτρινη κάρτα (2η κίτρινη = αποκλεισμός)" style="'+(yy ? 'background:#F4C430; border-color:#D9A800; color:#3A2E00; font-weight:bold;' : '')+'">'+(yy ? (yy >= 2 ? '🟨🟨' : '🟨') : '🟨')+'</button>';
+        html += '<button class="abs-btn'+(st?' on':'')+'" onclick="toggleRoundAbsent('+jsStr(slot.athleteId)+')" title="Κατάσταση: απών → κόκκινη κάρτα (αποκλεισμός) → εγκατάλειψη → κανονικά">'+(st ? statusLabel(st) : 'Απ/Αποκλ')+'</button>';
         html += '</div>';
       }
       html += '</div>';
+      if (filled && state.stage === "result" && (st || yellowOf(slot.athleteId) || cardNote(slot.athleteId))){
+        html += '<div style="margin:4px 0 0 40px;"><input type="text" class="input" style="width:100%; box-sizing:border-box; font-size:12px; padding:5px 8px;" placeholder="Αιτιολογία (κάρτα / αποκλεισμός / εγκατάλειψη)" value="'+esc(cardNote(slot.athleteId))+'" onchange="setCardNote('+jsStr(slot.athleteId)+', this.value)" /></div>';
+      }
       if (filled && state.stage === "result" && !st){
         var c = parseCatch(state.weights[slot.athleteId]);
         var parts = isSumPair(slot) ? [].concat.apply([], slot.pair.map(function(m){ return athleteCountParts(m.athleteId); })) : athleteCountParts(slot.athleteId);
@@ -3692,10 +4240,14 @@ function renderDraw(){
 /* ---------- boot ---------- */
 (function boot(){
   initDb().then(function(){
-    return Promise.all([storageGet(LIBRARY_KEY), storageGet(ROSTER_KEY), storageGet(SAVED_DRAWS_KEY), storageGet(MODE_KEY), storageGet(CURRENT_KEY), storageGet(QUOTA_KEY), storageGet(PAIRS_KEY), storageGet(REMOVED_DEFAULTS_KEY)]);
+    return Promise.all([storageGet(LIBRARY_KEY), storageGet(ROSTER_KEY), storageGet(SAVED_DRAWS_KEY), storageGet(MODE_KEY), storageGet(CURRENT_KEY), storageGet(QUOTA_KEY), storageGet(PAIRS_KEY), storageGet(REMOVED_DEFAULTS_KEY), storageGet(REGION_SEL_KEY), storageGet(REGION_ORDER_KEY), storageGet(ATHLETE_MEMO_KEY), storageGet(PAN_RED_KEY)]);
   }).then(function(results){
     var libVal = results[0], rosterVal = results[1], savedVal = results[2], currentVal = results[4], quotaVal = results[5], pairsVal = results[6];
     if (results[7]){ try { var rdv = JSON.parse(results[7]); if (Array.isArray(rdv)) state.removedDefaults = rdv; } catch(e){} }
+    if (results[8]){ try { var rsv = JSON.parse(results[8]); if (typeof rsv === "number" && rsv >= 0 && rsv < REGIONS.length) state.regionSel = rsv; } catch(e){} }
+    if (results[9]){ try { var rov = JSON.parse(results[9]); if (rov && typeof rov === "object") state.regionOrder = rov; } catch(e){} }
+    if (results[11]){ try { state.panRedCarry = JSON.parse(results[11]) === true; } catch(e){} }
+    if (results[10]){ try { var amv = JSON.parse(results[10]); if (amv && typeof amv === "object") state.athleteMemo = amv; } catch(e){} }
     if (pairsVal){ try { var pv = JSON.parse(pairsVal); if (pv && typeof pv === "object") state.pairs = { on: !!pv.on, mode: pv.mode === "sum" ? "sum" : "joint", list: Array.isArray(pv.list) ? pv.list : [] }; } catch(e){} }
     if (quotaVal){ try { var q = JSON.parse(quotaVal); if (q && typeof q === "object") {
       // Παλιά μορφή (myRegion / others) → manual: οι άλλες περιφέρειες κρατούν τους έγκυρους τους.
@@ -3711,18 +4263,22 @@ function renderDraw(){
     var loadedRoster = null;
     if (rosterVal){ try { loadedRoster = JSON.parse(rosterVal); } catch(e){} }
     if (loadedRoster && loadedRoster.length > 0){
-      var merged = loadedRoster.map(function(c){ return Object.assign({}, c, { logo: c.logo || (c.noLogo ? null : DEFAULT_LOGOS[c.defaultName || c.name]) || null }); });
+      var merged = loadedRoster.map(function(c){ return migrateAthletesByMode(Object.assign({}, c, { logo: c.logo || (c.noLogo ? null : DEFAULT_LOGOS[c.defaultName || c.name]) || null })); });
       DEFAULT_ROSTER_RAW.forEach(function(entry){
-        var clubName = entry[0];
-        if (state.removedDefaults.indexOf(clubName) !== -1) return;
-        if (!merged.some(function(c){ return c.name === clubName || c.defaultName === clubName; })){
+        var clubName = entry[0], nk = normalizeClubName(clubName);
+        // Σύγκριση χωρίς τόνους/κεφαλαία και στις δύο πλευρές (και για το
+        // defaultName), ώστε σύλλογος γραμμένος αλλιώς («ανοβ») να μη διπλασιάζεται.
+        if (state.removedDefaults.some(function(n){ return normalizeClubName(n) === nk; })) return;
+        if (!merged.some(function(c){ return normalizeClubName(c.name) === nk || normalizeClubName(c.defaultName || "") === nk; })){
           merged.push({ id: uid(), name: clubName, color: CLUB_COLORS[merged.length % CLUB_COLORS.length], logo: DEFAULT_LOGOS[clubName] || null, athletes: [] });
         }
       });
       state.clubs = merged;
     } else {
-      state.clubs = buildDefaultRoster();
+      state.clubs = buildDefaultRoster().map(migrateAthletesByMode);
     }
+    state.athletesMode = null;
+    syncAthletes(state.mode || "friendly");
     state.rosterLoaded = true;
     if (currentVal){ try { restoreWorking(JSON.parse(currentVal)); } catch(e){} }
     render();
