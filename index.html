@@ -88,7 +88,7 @@ var ROSTER_KEY = "casting/roster";
 var SAVED_DRAWS_KEY = "casting/saved_draws";
 var MODE_KEY = "casting/mode";
 var APP_NAME = "Κληρώσεις & Διαχείριση Αγώνων Κάστινγκ";
-var APP_VERSION = "v1.22 · 09/11/2026";
+var APP_VERSION = "v1.23 · 10/11/2026";
 var CURRENT_KEY = "casting/current_race";
 var QUOTA_KEY = "casting/quota";
 var PAIRS_KEY = "casting/pairs";
@@ -99,41 +99,75 @@ var ATHLETE_MEMO_KEY = "casting/athlete_memo";
 var PAN_RED_KEY = "casting/pan_red_carry";
 // Οι περιφέρειες με τα κανονικά τους ονόματα· regionKey() τις αναγνωρίζει
 // όπως κι αν γράφτηκαν (από τη ρίζα του ονόματος).
-// Το κάστινγκ έχει 3 περιφερειακά πρωταθλήματα.
-var REGIONS = ["Περιφέρεια Αττικής", "Περιφέρεια Αν. Μακεδονίας & Θράκης", "Περιφέρεια Πελοποννήσου"];
-var REGION_ROOTS = ["αττικ", "μακεδον", "πελοποννησ"];
-var REGION_ROOTS_EXTRA = [[], ["θρακ"], []];
-// Λίστα συμμετοχών: [σύλλογος, ΟΝΟΜΑ (κεφαλαία, χωρίς τόνους), αρ. μητρώου ή "", δείκτης περιφέρειας (0–2)].
+// Το κάστινγκ έχει 4 περιφερειακά πρωταθλήματα (λίστα συμμετοχών 2026-27).
+var REGIONS = ["Περιφέρεια Αττικής", "Περιφέρεια Κ. Μακεδονίας", "Περιφέρεια Αν. Μακεδονίας & Θράκης", "Περιφέρεια Πελοποννήσου"];
+var REGIONS_VER = 2;            // 1 = Αττικής / Αν. Μακεδονίας & Θράκης / Πελοποννήσου (v1.21–v1.22)
+var REGIONS_VER_KEY = "casting/regions_v";
+
+// Λίστα συμμετοχών: [σύλλογος, ΟΝΟΜΑ (κεφαλαία, χωρίς τόνους), αρ. μητρώου ή "", δείκτης περιφέρειας (0–3)].
 // Λίστα Συμμετοχής Αθλητών 2026-27 κάστινγκ (σύλλογοι με τα ονόματα της εφαρμογής).
 var ENTRIES = [
-  ["ΑΝΟΒ", "ΑΝΔΡΕΟΥ ΑΝΑΣΤΑΣΙΟΣ", "", 2],
-  ["ΑΝΟΒ", "ΓΕΩΡΓΙΟΥ ΓΕΩΡΓΙΟΣ", "", 2],
-  ["ΑΝΟΒ", "ΓΚΙΚΟΠΟΥΛΟΣ ΛΟΥΚΑΣ", "", 2],
-  ["ΑΝΟΒ", "ΔΕΔΕΣ ΕΥΘΥΜΙΟΣ", "", 2],
-  ["ΑΝΟΒ", "ΚΑΣΤΡΙΝΟΣ ΚΩΝΣΤΑΝΤΙΝΟΣ", "", 2],
-  ["ΑΝΟΒ", "ΚΑΣΤΡΙΝΟΣ ΣΠΥΡΙΔΩΝ", "", 2],
-  ["ΑΝΟΒ", "ΚΟΚΚΙΝΟΣ ΑΛΕΞΑΝΔΡΟΣ", "", 2],
-  ["ΑΝΟΒ", "ΚΟΝΟΒΕΣΗΣ ΑΘΑΝΑΣΙΟΣ", "", 2],
-  ["ΑΝΟΒ", "ΛΙΑΚΟΥΡΑΣ ΓΕΩΡΓΙΟΣ", "", 2],
-  ["ΑΝΟΒ", "BUTU CRISTIAN", "", 2],
-  ["ΑΝΟΒ", "ΠΑΠΑΚΩΝΣΤΑΝΤΙΝΟΥ ΓΕΩΡΓΙΟΣ", "", 2],
-  ["ΑΝΟΒ", "ΡΟΔΙΤΗΣ ΕΜΜΑΝΟΥΗΛ", "", 2],
-  ["ΑΝΟΒ", "ΣΟΦΡΩΝΙΑΔΗΣ ΕΥΘΥΜΙΟΣ", "", 2],
-  ["ΑΝΟΒ", "ΣΤΑΜΠΟΛΗΣ ΕΥΑΓΓΕΛΟΣ", "", 2],
+  ["ΑΝΟΒ", "ΑΝΔΡΕΟΥ ΑΝΑΣΤΑΣΙΟΣ", "", 3],
+  ["ΑΝΟΒ", "ΓΕΩΡΓΙΟΥ ΓΕΩΡΓΙΟΣ", "", 3],
+  ["ΑΝΟΒ", "ΓΚΙΚΟΠΟΥΛΟΣ ΛΟΥΚΑΣ", "", 3],
+  ["ΑΝΟΒ", "ΔΕΔΕΣ ΕΥΘΥΜΙΟΣ", "", 3],
+  ["ΑΝΟΒ", "ΚΑΣΤΡΙΝΟΣ ΚΩΝΣΤΑΝΤΙΝΟΣ", "", 3],
+  ["ΑΝΟΒ", "ΚΑΣΤΡΙΝΟΣ ΣΠΥΡΙΔΩΝ", "", 3],
+  ["ΑΝΟΒ", "ΚΟΚΚΙΝΟΣ ΑΛΕΞΑΝΔΡΟΣ", "", 3],
+  ["ΑΝΟΒ", "ΚΟΝΟΒΕΣΗΣ ΑΘΑΝΑΣΙΟΣ", "", 3],
+  ["ΑΝΟΒ", "ΛΙΑΚΟΥΡΑΣ ΓΕΩΡΓΙΟΣ", "", 3],
+  ["ΑΝΟΒ", "BUTU CRISTIAN", "", 3],
+  ["ΑΝΟΒ", "ΠΑΠΑΚΩΝΣΤΑΝΤΙΝΟΥ ΓΕΩΡΓΙΟΣ", "", 3],
+  ["ΑΝΟΒ", "ΡΟΔΙΤΗΣ ΕΜΜΑΝΟΥΗΛ", "", 3],
+  ["ΑΝΟΒ", "ΣΟΦΡΩΝΙΑΔΗΣ ΕΥΘΥΜΙΟΣ", "12608", 1],
+  ["ΑΝΟΒ", "ΣΤΑΜΠΟΛΗΣ ΕΥΑΓΓΕΛΟΣ", "", 3],
   ["ΔΕΛΦΙΝΙΑ", "ΚΟΥΚΟΥΛΙΘΡΑΣ ΗΛΙΑΣ", "14653", 0],
   ["ΝΟΤΚ", "ΔΡΟΣΟΣ ΑΝΤΩΝΙΟΣ", "7669", 0],
   ["ΝΟΤΚ", "ΠΑΠΑΔΟΠΟΥΛΟΣ ΒΑΣΙΛΕΙΟΣ", "13932", 0],
   ["ΝΟΤΚ", "ΡΕΖΕΚ ΝΙΝΤΑΛ", "12947", 0],
   ["ΝΟΤΚ", "ΡΕΤΣΙΛΑΣ ΦΩΤΙΟΣ", "13583", 0],
-  ["ΝΟΘΑΚ", "ΑΠΑΤΖΙΔΗΣ ΗΛΙΑΣ", "14937", 1],
-  ["ΝΟΘΑΚ", "ΚΡΑΝΑΣ ΣΤΕΛΙΟΣ", "14883", 1],
-  ["ΝΟΘΑΚ", "ΜΠΕΛΛΙΟΣ ΒΑΣΙΛΕΙΟΣ", "", 1],
-  ["ΝΟΘΑΚ", "ΠΑΠΑΔΟΠΟΥΛΟΣ ΠΑΝΑΓΙΩΤΗΣ", "14841", 1],
-  ["ΝΟΘΑΚ", "ΠΑΣΧΑΛΗΣ ΓΙΩΡΓΟΣ", "15028", 1],
-  ["ΝΟΘΑΚ", "POPOV ALEKSEI", "14781", 1],
-  ["ΝΟΘΑΚ", "ΡΗΝΩΤΑΣ ΓΙΑΝΝΗΣ", "14528", 1],
-  ["ΝΟΘΑΚ", "SEZGIN HAMBIL", "15927", 1],
-  ["ΝΟΘΑΚ", "ΦΙΤΣΙΟΣ ΑΝΤΩΝΗΣ", "14880", 1]
+  ["ΝΟΘΑΚ", "ΑΠΑΤΖΙΔΗΣ ΗΛΙΑΣ", "14937", 2],
+  ["ΝΟΘΑΚ", "ΚΡΑΝΑΣ ΣΤΕΛΙΟΣ", "14883", 2],
+  ["ΝΟΘΑΚ", "ΜΠΕΛΛΙΟΣ ΒΑΣΙΛΕΙΟΣ", "", 2],
+  ["ΝΟΘΑΚ", "ΠΑΠΑΔΟΠΟΥΛΟΣ ΠΑΝΑΓΙΩΤΗΣ", "14841", 2],
+  ["ΝΟΘΑΚ", "ΠΑΣΧΑΛΗΣ ΓΙΩΡΓΟΣ", "15028", 2],
+  ["ΝΟΘΑΚ", "POPOV ALEKSEI", "14781", 2],
+  ["ΝΟΘΑΚ", "ΡΗΝΩΤΑΣ ΓΙΑΝΝΗΣ", "14528", 2],
+  ["ΝΟΘΑΚ", "SEZGIN HAMBIL", "15927", 2],
+  ["ΝΟΘΑΚ", "ΦΙΤΣΙΟΣ ΑΝΤΩΝΗΣ", "14880", 2],
+  ["ΤΡΙΤΩΝ", "ΓΑΒΑΝΑΣ ΑΝΤΩΝΗΣ", "14706", 0],
+  ["ΤΡΙΤΩΝ", "ΓΚΟΥΒΕΡΗΣ ΔΗΜΗΤΡΗΣ", "14380", 0],
+  ["ΤΡΙΤΩΝ", "ΔΑΜΤΣΙΑΣ ΝΙΚΟΣ", "15011", 0],
+  ["ΤΡΙΤΩΝ", "ΖΟΛΚΑΣ ΔΗΜΗΤΡΗΣ", "12949", 0],
+  ["ΤΡΙΤΩΝ", "ΚΑΜΠΙΤΣΗΣ ΠΑΥΛΟΣ", "11522", 0],
+  ["ΤΡΙΤΩΝ", "ΚΑΠΕΤΑΝΙΟΣ ΓΙΑΝΝΗΣ", "13454", 0],
+  ["ΤΡΙΤΩΝ", "ΚΥΡΙΑΖΗΣ ΓΙΩΡΓΟΣ", "12543", 0],
+  ["ΤΡΙΤΩΝ", "ΚΥΡΙΑΚΟΥ ΗΛΙΑΣ", "", 0],
+  ["ΤΡΙΤΩΝ", "ΚΩΝΣΤΑΝΤΙΝΟΥ ΕΙΡΗΝΗ", "14637", 0],
+  ["ΤΡΙΤΩΝ", "ΛΟΥΚΙΔΗΣ ΜΙΧΑΛΗΣ", "13331", 0],
+  ["ΤΡΙΤΩΝ", "ΜΠΟΥΖΕΓΙΑΣ ΣΠΥΡΟΣ", "14722", 0],
+  ["ΤΡΙΤΩΝ", "ΝΤΟΚΟΣ ΑΚΗΣ", "14723", 0],
+  ["ΤΡΙΤΩΝ", "ΞΕΝΟΥΔΑΚΗΣ ΣΟΦΟΚΛΗΣ", "11315", 0],
+  ["ΤΡΙΤΩΝ", "ΠΑΠΙΔΑΚΗΣ ΑΝΤΩΝΗΣ", "12460", 0],
+  ["ΤΡΙΤΩΝ", "ΤΣΙΛΙΦΩΝΗ ΠΕΝΝΥ", "14850", 0],
+  ["ΤΡΙΤΩΝ", "ΦΩΤΟΣ ΔΗΜΗΤΡΗΣ", "14060", 0],
+  ["ΦΑΡ", "ΓΟΥΝΤΣΙΩΤΗΣ ΑΘΑΝΑΣΙΟΣ", "15033", 1],
+  ["ΦΑΡ", "ΓΟΥΝΤΣΙΩΤΗΣ ΖΗΣΗΣ", "15031", 1],
+  ["ΦΑΡ", "ΖΑΪΡΕΣ ΝΙΚΟΣ", "14865", 1],
+  ["ΦΑΡ", "ΚΑΛΑΪΤΖΙΔΗΣ ΣΙΜΟΣ", "13726", 1],
+  ["ΦΑΡ", "ΚΑΛΟΥΣΗΣ ΙΩΑΝΝΗΣ", "14876", 1],
+  ["ΦΑΡ", "ΚΕΤΕΣΙΔΗΣ ΒΑΙΟΣ", "13487", 1],
+  ["ΦΑΡ", "ΚΕΦΑΛΑΣ ΔΗΜΗΤΡΗΣ", "15030", 1],
+  ["ΦΑΡ", "ΛΑΖΟΠΟΥΛΟΣ ΓΕΩΡΓΙΟΣ", "14864", 1],
+  ["ΦΑΡ", "ΜΠΑΪΡΑΚΤΑΡΗΣ ΛΑΜΠΡΟΣ", "14877", 1],
+  ["ΦΑΡ", "ΠΑΛΑΜΙΩΤΗΣ ΚΩΣΤΑΣ", "14862", 1],
+  ["ΦΑΡ", "ΠΑΠΑΓΙΑΝΝΟΠΟΥΛΟΣ ΑΘΑΝΑΣΙΟΣ", "15029", 1],
+  ["ΦΑΡ", "ΣΙΔΕΡΙΑΔΗΣ ΔΗΜΗΤΡΗΣ", "14789", 1],
+  ["ΦΑΡ", "ΣΤΑΜΑΤΟΠΟΥΛΟΣ ΔΗΜΗΤΡΗΣ", "14872", 1],
+  ["ΦΑΡ", "ΣΥΜΕΩΝΙΔΗΣ ΓΙΩΡΓΟΣ", "14616", 1],
+  ["ΦΑΡ", "CEPELE LAUREN", "13484", 1],
+  ["ΦΑΡ", "ΦΙΡΙΝΙΔΗΣ ΔΙΟΝΥΣΗΣ", "14248", 1],
+  ["ΦΑΡ", "ΧΑΡΙΖΑΚΛΗΣ ΦΙΛΙΠΠΟΣ", "14736", 1]
 ];
 var ENTRIES_TITLE = "Λίστα συμμετοχών 2026-27";
 var ENTRIES_DEADLINE = "30/10/2026";
@@ -1678,6 +1712,7 @@ function loadRegion(i){
     ents.forEach(function(e){
       var ex = old.find(function(a){ return athMatchesEntry(a, e); });
       var a = ex || { id: uid(), name: e[1] };
+      a.name = e[1];
       if (e[2]) a.reg = String(e[2]).trim();
       if (!a.sponsor){ var sp = memoSponsor(e); if (sp) a.sponsor = sp; }
       (ex ? kept : fresh).push({ a: a, oldIdx: ex ? old.indexOf(ex) : 0 });
@@ -3587,10 +3622,11 @@ function raceCell(label, x){
 function minRaces(){ var n = parseInt(state.quota && state.quota.minRaces, 10); return n >= 1 ? n : 3; }
 function regionIndexOf(s){
   var k = normalizeClubName(String(s || ""));
-  for (var i = 0; i < REGION_ROOTS.length; i++){
-    if (k.indexOf(REGION_ROOTS[i]) !== -1) return i;
-    if ((REGION_ROOTS_EXTRA[i] || []).some(function(r){ return k.indexOf(r) !== -1; })) return i;
-  }
+  // Πρώτα η Αν. Μακεδονία & Θράκη, ώστε το «μακεδον» να μην την πάρει για Κ. Μακεδονία.
+  if (/θρακ|ανατολ|(^|[^α-ω])αν μακεδον/.test(k)) return 2;
+  if (k.indexOf("μακεδον") !== -1) return 1;
+  if (k.indexOf("αττικ") !== -1) return 0;
+  if (k.indexOf("πελοποννησ") !== -1) return 3;
   return -1;
 }
 function regionKey(s){ var i = regionIndexOf(s); return i >= 0 ? "@" + i : normalizeClubName(String(s || "")); }
@@ -4240,12 +4276,18 @@ function renderDraw(){
 /* ---------- boot ---------- */
 (function boot(){
   initDb().then(function(){
-    return Promise.all([storageGet(LIBRARY_KEY), storageGet(ROSTER_KEY), storageGet(SAVED_DRAWS_KEY), storageGet(MODE_KEY), storageGet(CURRENT_KEY), storageGet(QUOTA_KEY), storageGet(PAIRS_KEY), storageGet(REMOVED_DEFAULTS_KEY), storageGet(REGION_SEL_KEY), storageGet(REGION_ORDER_KEY), storageGet(ATHLETE_MEMO_KEY), storageGet(PAN_RED_KEY)]);
+    return Promise.all([storageGet(LIBRARY_KEY), storageGet(ROSTER_KEY), storageGet(SAVED_DRAWS_KEY), storageGet(MODE_KEY), storageGet(CURRENT_KEY), storageGet(QUOTA_KEY), storageGet(PAIRS_KEY), storageGet(REMOVED_DEFAULTS_KEY), storageGet(REGION_SEL_KEY), storageGet(REGION_ORDER_KEY), storageGet(ATHLETE_MEMO_KEY), storageGet(PAN_RED_KEY), storageGet(REGIONS_VER_KEY)]);
   }).then(function(results){
     var libVal = results[0], rosterVal = results[1], savedVal = results[2], currentVal = results[4], quotaVal = results[5], pairsVal = results[6];
     if (results[7]){ try { var rdv = JSON.parse(results[7]); if (Array.isArray(rdv)) state.removedDefaults = rdv; } catch(e){} }
-    if (results[8]){ try { var rsv = JSON.parse(results[8]); if (typeof rsv === "number" && rsv >= 0 && rsv < REGIONS.length) state.regionSel = rsv; } catch(e){} }
-    if (results[9]){ try { var rov = JSON.parse(results[9]); if (rov && typeof rov === "object") state.regionOrder = rov; } catch(e){} }
+    var oldRegions = results[12] !== String(REGIONS_VER) && (results[8] || results[9]);
+    var REMAP = { 0: 0, 1: 2, 2: 3 };
+    if (results[8]){ try { var rsv = JSON.parse(results[8]); if (oldRegions && typeof rsv === "number") rsv = REMAP[rsv]; if (typeof rsv === "number" && rsv >= 0 && rsv < REGIONS.length) state.regionSel = rsv; } catch(e){} }
+    if (results[9]){ try { var rov = JSON.parse(results[9]); if (rov && typeof rov === "object"){
+      if (oldRegions){ var nr = {}; Object.keys(rov).forEach(function(k){ var m = /^@(\d+)$/.exec(k); nr[m && REMAP[m[1]] !== undefined ? "@" + REMAP[m[1]] : k] = rov[k]; }); rov = nr; }
+      state.regionOrder = rov; } } catch(e){} }
+    if (oldRegions){ storageSet(REGION_SEL_KEY, JSON.stringify(state.regionSel)); storageSet(REGION_ORDER_KEY, JSON.stringify(state.regionOrder)); }
+    storageSet(REGIONS_VER_KEY, String(REGIONS_VER));
     if (results[11]){ try { state.panRedCarry = JSON.parse(results[11]) === true; } catch(e){} }
     if (results[10]){ try { var amv = JSON.parse(results[10]); if (amv && typeof amv === "object") state.athleteMemo = amv; } catch(e){} }
     if (pairsVal){ try { var pv = JSON.parse(pairsVal); if (pv && typeof pv === "object") state.pairs = { on: !!pv.on, mode: pv.mode === "sum" ? "sum" : "joint", list: Array.isArray(pv.list) ? pv.list : [] }; } catch(e){} }
