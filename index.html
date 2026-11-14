@@ -88,7 +88,7 @@ var ROSTER_KEY = "casting/roster";
 var SAVED_DRAWS_KEY = "casting/saved_draws";
 var MODE_KEY = "casting/mode";
 var APP_NAME = "Κληρώσεις & Διαχείριση Αγώνων Κάστινγκ";
-var APP_VERSION = "v1.23 · 10/11/2026";
+var APP_VERSION = "v1.24 · 14/11/2026";
 var CURRENT_KEY = "casting/current_race";
 var QUOTA_KEY = "casting/quota";
 var PAIRS_KEY = "casting/pairs";
@@ -250,7 +250,26 @@ const DEFAULT_LOGOS = {
 
 function uid(){ return Math.random().toString(36).slice(2) + Date.now().toString(36); }
 function shuffle(arr){ var a=arr.slice(); for(var i=a.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var t=a[i]; a[i]=a[j]; a[j]=t; } return a; }
-function esc(s){ var d=document.createElement("div"); d.textContent = s==null?"":String(s); return d.innerHTML; }
+var ESC_MAP = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "\u00A0": "&nbsp;" };
+function esc(s){ return (s == null ? "" : String(s)).replace(/[&<>"\u00A0]/g, function(c){ return ESC_MAP[c]; }); }
+// Λογότυπα στην οθόνη: κάθε data:image γίνεται μία φορά blob URL, ώστε ο browser
+// να μην ξανα-αποκωδικοποιεί δεκάδες εικόνες σε κάθε render (μπαταρία).
+// ΜΟΝΟ για την οθόνη — PDF, εκτυπώσεις και αρχεία κρατούν data:.
+var _blobUrls = {};
+function lightImages(html){
+  if (typeof URL === "undefined" || !URL.createObjectURL || typeof Blob === "undefined" || typeof atob === "undefined") return html;
+  return html.replace(/src="(data:([^;,"]+);base64,([^"]+))"/g, function(m, full, mime, b64){
+    var u = _blobUrls[full];
+    if (!u){
+      try {
+        var bin = atob(b64), arr = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        u = _blobUrls[full] = URL.createObjectURL(new Blob([arr], { type: mime }));
+      } catch(e){ return m; }
+    }
+    return 'src="' + u + '"';
+  });
+}
 function jsStr(s){ return "'" + String(s==null?"":s).replace(/\\/g,"\\\\").replace(/'/g,"\\'") + "'"; }
 
 function computeCapacities(total, n){
@@ -1443,6 +1462,46 @@ function printPdf(kind){
   }, 50);
 }
 
+/* ---------- Αποθηκευμένοι αγώνες: κάθε λογότυπο μία φορά ---------- */
+// Κάθε αγώνας κρατά λογότυπο ανά αθλητή· στην αποθήκευση τα ίδια data: γίνονται
+// μία εγγραφή σε κοινό «pool» ({__img: n}). Η παλιά μορφή (array) διαβάζεται όπως είναι.
+function packDraws(draws){
+  var pool = [], idx = {};
+  function walk(v){
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === "object"){
+      var o = {};
+      for (var k in v){
+        var x = v[k];
+        if (typeof x === "string" && x.length > 200 && x.indexOf("data:") === 0){
+          if (!(x in idx)){ idx[x] = pool.length; pool.push(x); }
+          o[k] = { __img: idx[x] };
+        } else o[k] = walk(x);
+      }
+      return o;
+    }
+    return v;
+  }
+  return JSON.stringify({ packed: 2, pool: pool, draws: walk(draws) });
+}
+function unpackDraws(parsed){
+  if (Array.isArray(parsed)) return parsed;
+  if (!parsed || parsed.packed !== 2 || !Array.isArray(parsed.draws)) return [];
+  var pool = parsed.pool || [];
+  function walk(v){
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === "object"){
+      if (typeof v.__img === "number" && Object.keys(v).length === 1) return pool[v.__img] || null;
+      var o = {};
+      for (var k in v) o[k] = walk(v[k]);
+      return o;
+    }
+    return v;
+  }
+  return walk(parsed.draws);
+}
+function persistSavedDraws(){ storageSet(SAVED_DRAWS_KEY, packDraws(state.savedDraws)); }
+
 /* ---------- Εισαγωγή αγώνα από το Excel/CSV που εξάγει η εφαρμογή ---------- */
 function parseCsvText(text){
   text = text.replace(/^\uFEFF/, "");
@@ -1476,17 +1535,92 @@ function triggerImportCsv(){
   var inp = document.getElementById("csvImportInput");
   if (inp) inp.click();
 }
+// Δέχεται το CSV της εφαρμογής, αλλά και .xlsx (όταν ανοίχτηκε και
+// αποθηκεύτηκε στο Excel) και CSV σε windows-1253.
 function importRaceCsv(file){
   if (!file) return;
   var reader = new FileReader();
+  function fail(e){ state.importMsg = "✕ Το αρχείο δεν διαβάστηκε: " + (e && e.message ? e.message : e); render(); }
   reader.onload = function(){
-    try { importRaceCsvText(String(reader.result), file.name); }
-    catch(e){ state.importMsg = "✕ Το αρχείο δεν διαβάστηκε: " + e.message; render(); }
+    var bytes = new Uint8Array(reader.result);
+    if (bytes[0] === 0x50 && bytes[1] === 0x4B){
+      xlsxToRows(bytes).then(function(rows){ importRaceRows(rows, file.name); }).catch(fail);
+      return;
+    }
+    if (bytes[0] === 0xD0 && bytes[1] === 0xCF){ fail(new Error("παλιό αρχείο .xls — αποθήκευσέ το ως .xlsx ή CSV και ξαναδοκίμασε")); return; }
+    try { importRaceRows(parseCsvText(decodeText(bytes)), file.name); } catch(e){ fail(e); }
   };
-  reader.readAsText(file, "utf-8");
+  reader.onerror = function(){ fail(new Error("δεν άνοιξε")); };
+  reader.readAsArrayBuffer(file);
 }
-function importRaceCsvText(text, fileName){
-  var rows = parseCsvText(text);
+function decodeText(bytes){
+  try { return new TextDecoder("utf-8", { fatal: true }).decode(bytes); }
+  catch(e){ return new TextDecoder("windows-1253").decode(bytes); }
+}
+// Ελάχιστος αναγνώστης .xlsx: zip από το central directory, αποσυμπίεση με
+// DecompressionStream("deflate-raw"), πρώτο φύλλο → πίνακας γραμμών.
+function unzipEntries(bytes){
+  var dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength), eocd = -1;
+  for (var i = bytes.length - 22; i >= Math.max(0, bytes.length - 65557); i--){ if (dv.getUint32(i, true) === 0x06054b50){ eocd = i; break; } }
+  if (eocd < 0) throw new Error("κατεστραμμένο αρχείο .xlsx");
+  var n = dv.getUint16(eocd + 10, true), off = dv.getUint32(eocd + 16, true), out = {};
+  for (var k = 0; k < n; k++){
+    if (dv.getUint32(off, true) !== 0x02014b50) break;
+    var method = dv.getUint16(off + 10, true), csize = dv.getUint32(off + 20, true);
+    var nl = dv.getUint16(off + 28, true), el = dv.getUint16(off + 30, true), cl = dv.getUint16(off + 32, true), lh = dv.getUint32(off + 42, true);
+    var name = new TextDecoder("utf-8").decode(bytes.subarray(off + 46, off + 46 + nl));
+    var start = lh + 30 + dv.getUint16(lh + 26, true) + dv.getUint16(lh + 28, true);
+    out[name] = { method: method, data: bytes.subarray(start, start + csize) };
+    off += 46 + nl + el + cl;
+  }
+  return out;
+}
+function unzipText(entry){
+  if (!entry) return Promise.resolve("");
+  if (entry.method === 0) return Promise.resolve(new TextDecoder("utf-8").decode(entry.data));
+  if (entry.method !== 8) return Promise.reject(new Error("άγνωστη συμπίεση .xlsx"));
+  if (typeof DecompressionStream === "undefined") return Promise.reject(new Error("ο browser δεν διαβάζει .xlsx — αποθήκευσέ το ως CSV"));
+  var ds = new DecompressionStream("deflate-raw");
+  var stream = new Blob([entry.data]).stream().pipeThrough(ds);
+  return new Response(stream).text();
+}
+function xmlDoc(t){ return new DOMParser().parseFromString(t, "application/xml"); }
+function xmlAll(node, tag){ return Array.prototype.slice.call(node.getElementsByTagNameNS("*", tag)); }
+function xlsxToRows(bytes){
+  var z = unzipEntries(bytes);
+  var path = function(n){ return z[n] || z["/" + n]; };
+  return Promise.all([unzipText(path("xl/workbook.xml")), unzipText(path("xl/_rels/workbook.xml.rels")), unzipText(path("xl/sharedStrings.xml"))]).then(function(t){
+    var wb = xmlDoc(t[0]), rels = xmlDoc(t[1]), ss = t[2] ? xmlDoc(t[2]) : null;
+    var sheet = xmlAll(wb, "sheet")[0];
+    if (!sheet) throw new Error("το .xlsx δεν έχει φύλλο");
+    var rid = sheet.getAttribute("r:id") || sheet.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id");
+    var rel = xmlAll(rels, "Relationship").filter(function(r){ return r.getAttribute("Id") === rid; })[0];
+    var target = rel ? rel.getAttribute("Target") : "worksheets/sheet1.xml";
+    target = target.charAt(0) === "/" ? target.slice(1) : "xl/" + target.replace(/^\.\//, "");
+    var shared = ss ? xmlAll(ss, "si").map(function(si){ return xmlAll(si, "t").map(function(x){ return x.textContent; }).join(""); }) : [];
+    return unzipText(path(target)).then(function(sx){
+      var rows = [];
+      xmlAll(xmlDoc(sx), "row").forEach(function(rw){
+        var row = [];
+        xmlAll(rw, "c").forEach(function(c, ci){
+          var ref = c.getAttribute("r") || "", letters = (ref.match(/^[A-Z]+/) || [""])[0], col = ci;
+          if (letters){ col = 0; for (var i = 0; i < letters.length; i++) col = col * 26 + (letters.charCodeAt(i) - 64); col--; }
+          var t = c.getAttribute("t"), vEl = xmlAll(c, "v")[0], v = vEl ? vEl.textContent : "";
+          if (t === "s") v = shared[parseInt(v, 10)] || "";
+          else if (t === "inlineStr") v = xmlAll(c, "t").map(function(x){ return x.textContent; }).join("");
+          else if (t === "str" || t === "b" || t === "e") v = v;
+          else if (v !== "" && !isNaN(Number(v))) v = String(parseFloat(Number(v).toPrecision(12)));
+          while (row.length < col) row.push("");
+          row[col] = v;
+        });
+        if (row.some(function(x){ return String(x).trim() !== ""; })) rows.push(row);
+      });
+      return rows;
+    });
+  });
+}
+function importRaceCsvText(text, fileName){ return importRaceRows(parseCsvText(text), fileName); }
+function importRaceRows(rows, fileName){
   if (rows.length < 2) throw new Error("κενό αρχείο");
   var H = rows[0].map(function(h){ return normalizeClubName(h); });
   function col(name){ return H.indexOf(normalizeClubName(name)); }
@@ -1550,7 +1684,7 @@ function importRaceCsvText(text, fileName){
     roundAbsent: statuses, rounds: null, currentRound: 0, absentAthletes: absentees
   };
   state.savedDraws.push(draw);
-  storageSet(SAVED_DRAWS_KEY, JSON.stringify(state.savedDraws));
+  persistSavedDraws();
   state.importMsg = "✓ Εισήχθη «" + name + "» · " + flat.length + " αθλητές σε " + caps.length + " τομείς" + (hasWeights ? " · με αλιεύματα" : "");
   render();
 }
@@ -1909,7 +2043,7 @@ function saveEditClub(){
   if (E.propagate) applyClubEditToRaces(c, oldName, renames);
   state.editClub = null;
   persistRoster();
-  storageSet(SAVED_DRAWS_KEY, JSON.stringify(state.savedDraws));
+  persistSavedDraws();
   persistWorking();
   render();
 }
@@ -2788,7 +2922,7 @@ function persistWorking(){
   if (idx >= 0){
     var keep = state.savedDraws[idx];
     state.savedDraws[idx] = snapshotDraw(keep.id, keep.name, keep.savedAt);
-    storageSet(SAVED_DRAWS_KEY, JSON.stringify(state.savedDraws));
+    persistSavedDraws();
   }
 }
 function clearWorking(){ storageSet(CURRENT_KEY, JSON.stringify(null)); state.currentDrawId = null; state.counts = []; state.countDraft = null; }
@@ -3070,7 +3204,7 @@ function saveCurrentDraw(){
     state.currentDrawId = uid();
     state.savedDraws.push(snapshotDraw(state.currentDrawId, name, new Date().toISOString()));
   }
-  storageSet(SAVED_DRAWS_KEY, JSON.stringify(state.savedDraws));
+  persistSavedDraws();
   state.savedFlash = true;
   persistWorking();
   render();
@@ -3110,7 +3244,7 @@ function loadSavedDraw(id){
 function deleteSavedDraw(id){
   confirmOrRun("saved-draw-"+id, function(){
     state.savedDraws = state.savedDraws.filter(function(d){ return d.id !== id; });
-    storageSet(SAVED_DRAWS_KEY, JSON.stringify(state.savedDraws));
+    persistSavedDraws();
   });
 }
 
@@ -3160,7 +3294,7 @@ function render(){
   else if (state.stage === "countView") body = renderCountView();
   else body = renderDraw();
 
-  root.innerHTML = header + '<div style="max-width:720px; margin:0 auto; padding:18px 16px 60px;">' + body + '</div>';
+  root.innerHTML = lightImages(header + '<div style="max-width:720px; margin:0 auto; padding:18px 16px 60px;">' + body + '</div>');
 
   if (state.editingSponsorFor){
     var editEl = document.getElementById("sponsorEdit-"+state.editingSponsorFor);
@@ -3481,7 +3615,7 @@ function renderSavedDraws(){
   var list = savedDrawsForMode(state.mode);
   html += '<div style="font-size:12px; color:#8A93A0; margin:-8px 0 12px;">'+(state.mode ? MODES[state.mode].title : '')+'</div>';
   if (state.mode !== "panhellenic"){
-    html += '<input type="file" id="csvImportInput" accept=".csv,text/csv,text/plain" style="display:none;" onchange="importRaceCsv(this.files[0]); this.value=\'\';" />';
+    html += '<input type="file" id="csvImportInput" accept=".csv,.xlsx,.xls,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" style="display:none;" onchange="importRaceCsv(this.files[0]); this.value=\'\';" />';
     html += '<button class="btn-secondary" style="width:100%; margin-bottom:10px;" onclick="triggerImportCsv()">📥 Εισαγωγή αγώνα από Excel (Φύλλο Αγώνα)</button>';
     if (state.importMsg) html += '<div style="font-size:12.5px; margin:-4px 0 12px; color:'+(state.importMsg.charAt(0)==="✓"?"#2E6B3E":"#A33")+';">'+esc(state.importMsg)+'</div>';
   }
@@ -3779,7 +3913,7 @@ function setDrawRegion(id){
   if (v === null) return;
   d.region = String(v).replace(/\s+/g, " ").trim();
   if (state.currentDrawId === id) state.saveRegionInput = d.region;
-  storageSet(SAVED_DRAWS_KEY, JSON.stringify(state.savedDraws));
+  persistSavedDraws();
   render();
 }
 var QUOTA_NOTE = "Η κατανομή είναι προσωρινή. Η τελική ποσόστωση κάθε Περιφέρειας θα οριστικοποιηθεί μετά την ολοκλήρωση των αγωνιστικών υποχρεώσεων σε όλες τις Περιφέρειες, όταν θα είναι γνωστός ο τελικός αριθμός έγκυρων συμμετοχών ανά Περιφέρεια.";
@@ -4298,7 +4432,7 @@ function renderDraw(){
       state.quota = { slots: q.slots != null ? (parseInt(q.slots, 10) || 0) : 35, minRaces: parseInt(q.minRaces, 10) >= 1 ? parseInt(q.minRaces, 10) : 3, manual: man, locked: q.locked && typeof q.locked === "object" ? q.locked : {} };
     } } catch(e){} }
     if (libVal){ try { state.library = JSON.parse(libVal); } catch(e){} }
-    if (savedVal){ try { state.savedDraws = JSON.parse(savedVal); } catch(e){} }
+    if (savedVal){ try { state.savedDraws = unpackDraws(JSON.parse(savedVal)); } catch(e){} }
     var modeVal = null;
     if (results[3]){ try { modeVal = JSON.parse(results[3]); } catch(e){} }
     if (MODES[modeVal]){ state.mode = modeVal; state.stage = "setup"; }
