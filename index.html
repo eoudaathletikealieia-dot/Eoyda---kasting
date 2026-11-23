@@ -95,7 +95,7 @@ var ROSTER_KEY = "casting/roster";
 var SAVED_DRAWS_KEY = "casting/saved_draws";
 var MODE_KEY = "casting/mode";
 var APP_NAME = "Κληρώσεις & Διαχείριση Αγώνων Κάστινγκ";
-var APP_VERSION = "v1.25 · 17/11/2026";
+var APP_VERSION = "v1.26 · 24/11/2026";
 var CURRENT_KEY = "casting/current_race";
 var QUOTA_KEY = "casting/quota";
 var PAIRS_KEY = "casting/pairs";
@@ -3398,6 +3398,13 @@ function renderSetup(){
       '<div style="margin-top:8px;"><button class="btn-primary-sm" style="padding:8px 14px;" onclick="backToDraw()">↩ Επιστροφή στην κλήρωση</button></div></div>';
   }
   html += renderRegionBox();
+  if (state.mode === "regional"){
+    var qOpen = state.quotaOnSetup !== false;
+    html += '<div style="margin-bottom:20px;"><div class="section-title" style="display:flex; align-items:center; gap:8px;"><span style="flex:1;">🎯 Κατανομή θέσεων τελικού</span>' +
+      '<button class="btn-link" style="font-size:12px;" onclick="state.quotaOnSetup='+(qOpen?'false':'true')+'; render();">'+(qOpen?'▾ Απόκρυψη':'▸ Εμφάνιση')+'</button></div>';
+    if (qOpen) html += quotaPanelHtml(computeQuota());
+    html += '</div>';
+  }
   html += renderPickPanel();
   html += '<div style="margin-bottom:20px;"><div class="section-title">Μαζική εισαγωγή</div>';
   html += '<div style="font-size:12.5px; color:#8A93A0; margin-bottom:6px;">Επικόλλησε <code>Όνομα, Σύλλογος[, Χορηγός]</code> ανά γραμμή — ή γράψε τον σύλλογο μόνο του από πάνω (π.χ. "ΔΕΛΦΙΝΙΑ (11)") και μετά ένα όνομα ανά γραμμή, προαιρετικά με "– Χορηγός" στο τέλος</div>';
@@ -3972,11 +3979,18 @@ function qualBadge(st){
   return '<span style="display:inline-block; font-size:10px; font-weight:bold; padding:1px 6px; border-radius:8px; margin-top:2px; white-space:nowrap; '+style+'">'+(st.kind==="q"?"✓ ":"")+esc(st.text)+'</span>';
 }
 function renderQuota(){
-  var Q = quotaRegions(), q = state.quota;
-  var inp = 'border:1px solid #CFC7B0; border-radius:4px; padding:7px 8px; font-size:15px; background:#fff; color:'+INK+';';
   var html = '<div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">';
   html += '<button class="btn-link" onclick="goSavedDraws()">← Πίσω</button>';
   html += '<span style="font-family:Georgia,serif; font-size:17px; color:'+NAVY+';">Κατανομή θέσεων τελικού</span></div>';
+  return html + quotaPanelHtml(computeQuota());
+}
+function computeQuota(){ return quotaRegions(); }
+// Όλο το περιεχόμενο της κατανομής θέσεων τελικού· το δείχνουν και η σελίδα
+// «Κατανομή θέσεων τελικού» και η ρύθμιση των Περιφερειακών.
+function quotaPanelHtml(Q){
+  var q = state.quota;
+  var inp = 'border:1px solid #CFC7B0; border-radius:4px; padding:7px 8px; font-size:15px; background:#fff; color:'+INK+';';
+  var html = '';
   html += '<div style="background:#fff; border:1px solid #E4DFCF; border-radius:5px; padding:10px 12px; margin-bottom:12px; display:flex; gap:14px; flex-wrap:wrap;">';
   html += '<label style="font-size:12.5px; color:#5A6472;">Θέσεις τελικού<br><input type="text" inputmode="numeric" value="'+(q.slots||0)+'" onchange="setQuotaNum(\'slots\', this.value)" style="'+inp+' width:90px; margin-top:4px;" /></label>';
   html += '<label style="font-size:12.5px; color:#5A6472;">Έγκυρη συμμετοχή: ελάχιστοι αγώνες<br><input type="text" inputmode="numeric" value="'+minRaces()+'" onchange="setQuotaNum(\'minRaces\', this.value)" style="'+inp+' width:90px; margin-top:4px;" /></label>';
