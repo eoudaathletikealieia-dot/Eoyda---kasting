@@ -95,7 +95,7 @@ var ROSTER_KEY = "casting/roster";
 var SAVED_DRAWS_KEY = "casting/saved_draws";
 var MODE_KEY = "casting/mode";
 var APP_NAME = "Κληρώσεις & Διαχείριση Αγώνων Κάστινγκ";
-var APP_VERSION = "v1.27 · 24/11/2026";
+var APP_VERSION = "v1.28 · 24/11/2026";
 var CURRENT_KEY = "casting/current_race";
 var QUOTA_KEY = "casting/quota";
 var PAIRS_KEY = "casting/pairs";
@@ -3634,7 +3634,6 @@ function renderSavedDraws(){
     html += '<button class="btn-secondary" style="width:100%; margin-bottom:10px;" onclick="triggerImportCsv()">📥 Εισαγωγή αγώνα από Excel (Φύλλο Αγώνα)</button>';
     if (state.importMsg) html += '<div style="font-size:12.5px; margin:-4px 0 12px; color:'+(state.importMsg.charAt(0)==="✓"?"#2E6B3E":"#A33")+';">'+esc(state.importMsg)+'</div>';
   }
-  if (state.mode === "regional") html += '<button class="btn-secondary" style="width:100%; margin-bottom:12px;" onclick="goQuota()">🎯 Κατανομή θέσεων τελικού (στη ρύθμιση)</button>';
   if (list.length === 0) html += '<div style="color:#8A93A0; font-size:13px;">Δεν υπάρχουν αποθηκευμένες κληρώσεις σε αυτόν τον τύπο αγώνα.</div>';
   list.slice().reverse().forEach(function(d){
     var armed = state.pendingDelete === "saved-draw-"+d.id;
