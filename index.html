@@ -95,7 +95,7 @@ var ROSTER_KEY = "casting/roster";
 var SAVED_DRAWS_KEY = "casting/saved_draws";
 var MODE_KEY = "casting/mode";
 var APP_NAME = "Κληρώσεις & Διαχείριση Αγώνων Κάστινγκ";
-var APP_VERSION = "v1.28 · 24/11/2026";
+var APP_VERSION = "v1.29 · 27/11/2026";
 var CURRENT_KEY = "casting/current_race";
 var QUOTA_KEY = "casting/quota";
 var PAIRS_KEY = "casting/pairs";
@@ -529,6 +529,7 @@ function migrateAthletesByMode(c){
 }
 
 function setMode(mode){
+  state.importMsg = "";
   if (!MODES[mode]) return;
   state.mode = mode;
   syncAthletes(mode);
@@ -3539,6 +3540,11 @@ function renderSetup(){
   });
   html += '</div>';
 
+  if (state.mode !== "panhellenic"){
+    html += '<input type="file" id="csvImportInput" accept=".csv,.xlsx,.xls,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" style="display:none;" onchange="importRaceCsv(this.files[0]); this.value=\'\';" />';
+    html += '<button class="btn-secondary" style="width:100%; margin-bottom:10px;" onclick="triggerImportCsv()">📥 Εισαγωγή αγώνα από Excel (Φύλλο Αγώνα)</button>';
+    if (state.importMsg) html += '<div style="font-size:12.5px; margin:-4px 0 12px; color:'+(state.importMsg.charAt(0)==="✓"?"#2E6B3E":"#A33")+';">'+esc(state.importMsg)+'</div>';
+  }
   html += '<div style="display:flex; justify-content:flex-end; gap:14px; margin-bottom:14px; flex-wrap:wrap;">';
   if (modeSaved.length > 0){
     html += '<button class="btn-link" onclick="goSavedDraws()">📂 Αποθηκευμένες κληρώσεις ('+modeSaved.length+')</button>';
@@ -3629,11 +3635,6 @@ function renderSavedDraws(){
   html += '</div>';
   var list = savedDrawsForMode(state.mode);
   html += '<div style="font-size:12px; color:#8A93A0; margin:-8px 0 12px;">'+(state.mode ? MODES[state.mode].title : '')+'</div>';
-  if (state.mode !== "panhellenic"){
-    html += '<input type="file" id="csvImportInput" accept=".csv,.xlsx,.xls,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" style="display:none;" onchange="importRaceCsv(this.files[0]); this.value=\'\';" />';
-    html += '<button class="btn-secondary" style="width:100%; margin-bottom:10px;" onclick="triggerImportCsv()">📥 Εισαγωγή αγώνα από Excel (Φύλλο Αγώνα)</button>';
-    if (state.importMsg) html += '<div style="font-size:12.5px; margin:-4px 0 12px; color:'+(state.importMsg.charAt(0)==="✓"?"#2E6B3E":"#A33")+';">'+esc(state.importMsg)+'</div>';
-  }
   if (list.length === 0) html += '<div style="color:#8A93A0; font-size:13px;">Δεν υπάρχουν αποθηκευμένες κληρώσεις σε αυτόν τον τύπο αγώνα.</div>';
   list.slice().reverse().forEach(function(d){
     var armed = state.pendingDelete === "saved-draw-"+d.id;
